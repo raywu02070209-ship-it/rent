@@ -1,0 +1,159 @@
+// 把紀錄簿原本的資料介面（window.claude.use）接到 Firebase：登入、Firestore 資料庫、Storage 檔案。
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+  sendEmailVerification, sendPasswordResetEmail, signOut, setPersistence, browserLocalPersistence }
+  from "https://www.gstatic.com/firebasejs/12.17.0/firebase-auth.js";
+import { initializeFirestore, collection, doc, onSnapshot, addDoc, setDoc, deleteDoc, getDocs, writeBatch }
+  from "https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore.js";
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject }
+  from "https://www.gstatic.com/firebasejs/12.17.0/firebase-storage.js";
+import { firebaseConfig, ADMIN_EMAILS } from "./firebase-config.js";
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const fs = initializeFirestore(app, { ignoreUndefinedProperties: true });
+const st = getStorage(app);
+const $ = id => document.getElementById(id);
+const hub = window.__fbHub;          // 由頁面上的小腳本先建立，紀錄簿會等它
+
+// ---------- 錯誤代碼轉成紀錄簿認得的 ----------
+const mapErr = e => {
+  const c = (e && e.code) || "";
+  const code = c.includes("permission-denied") ? "invalid_argument"
+    : c.includes("unavailable") || c.includes("network") ? "unavailable"
+    : c.includes("resource-exhausted") ? "quota_exceeded" : c;
+  const err = new Error((e && e.message) || "error"); err.code = code; return err;
+};
+const wrap = p => p.catch(e => { throw mapErr(e); });
+const docSnap = s => ({ id: s.id, exists: s.exists(), data: () => s.data() });
+
+// ---------- 資料庫 ----------
+function docApi(path){
+  const r = doc(fs, path);
+  return {
+    onSnapshot: (cb, onErr) => onSnapshot(r, s => cb(docSnap(s)), e => onErr && onErr(mapErr(e))),
+    set: d => wrap(setDoc(r, d)),
+    update: d => wrap(setDoc(r, d, { merge: true })),
+    delete: () => wrap(deleteDoc(r)),
+  };
+}
+function colApi(name){
+  const c = collection(fs, name);
+  return {
+    onSnapshot: (cb, onErr) => onSnapshot(c, s => cb({ docs: s.docs.map(docSnap) }), e => onErr && onErr(mapErr(e))),
+    add: d => wrap(addDoc(c, d)).then(r => ({ id: r.id })),
+    doc: id => docApi(name + "/" + id),
+  };
+}
+const dbApi = { collection: colApi, doc: docApi };
+
+// ---------- 檔案（照片、簽名、印章、合約 PDF） ----------
+const rid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+const EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "application/pdf": "pdf" };
+async function upload(blob, opts){
+  const type = (opts && opts.type) || blob.type || "application/octet-stream";
+  const r = ref(st, `files/${rid()}.${EXT[type] || "bin"}`);
+  await wrap(uploadBytes(r, blob, { contentType: type, cacheControl: "public,max-age=31536000" }));
+  return { id: await getDownloadURL(r) };     // 之後直接用這個網址顯示
+}
+const assetsApi = {
+  upload,
+  delete: async id => { if (/^https?:/.test(id)) await deleteObject(ref(st, id)); },
+  list: async () => { throw new Error("not supported"); },
+};
+
+// ---------- 下載 ----------
+const downloadsApi = {
+  save: async ({ filename, data }) => {
+    const url = URL.createObjectURL(data);
+    const a = document.createElement("a"); a.href = url; a.download = filename || "download";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  },
+};
+
+// ---------- 登入畫面 ----------
+const isAdmin = u => !!u && u.emailVerified && ADMIN_EMAILS.includes((u.email || "").toLowerCase());
+function showAuth(mode, msg){
+  $("authBox").hidden = false; $("authMsg").textContent = msg || ""; $("authMsg").hidden = !msg;
+  $("authForm").hidden = mode !== "form";
+  $("authWait").hidden = mode !== "verify" && mode !== "denied";
+  $("authWaitText").textContent = mode === "verify"
+    ? `驗證信已寄到 ${auth.currentUser && auth.currentUser.email}。請到信箱點信裡的連結完成驗證，再回來按「我已完成驗證」。（找不到請看垃圾郵件）`
+    : mode === "denied" ? `這個帳號（${auth.currentUser && auth.currentUser.email}）尚未開通使用權限，請聯絡管理員。` : "";
+  $("authRecheck").hidden = mode !== "verify"; $("authResend").hidden = mode !== "verify";
+}
+const zhAuthErr = e => {
+  const c = (e && e.code) || "";
+  return c.includes("invalid-credential") || c.includes("wrong-password") || c.includes("user-not-found") ? "Email 或密碼不正確。"
+    : c.includes("email-already-in-use") ? "這個 Email 已經註冊過了，請直接登入。"
+    : c.includes("weak-password") ? "密碼至少要 6 個字元。"
+    : c.includes("invalid-email") ? "Email 格式不正確。"
+    : c.includes("too-many-requests") ? "嘗試次數太多，請稍後再試。"
+    : c.includes("network") ? "網路連線有問題，請稍後再試。" : "發生錯誤：" + c;
+};
+const vals = () => ({ email: $("authEmail").value.trim(), pw: $("authPw").value });
+$("authLogin").onclick = async () => {
+  const { email, pw } = vals(); if (!email || !pw) return showAuth("form", "請輸入 Email 和密碼。");
+  try { await signInWithEmailAndPassword(auth, email, pw); } catch (e) { showAuth("form", zhAuthErr(e)); }
+};
+$("authSignup").onclick = async () => {
+  const { email, pw } = vals(); if (!email || !pw) return showAuth("form", "請輸入 Email 和想設定的密碼。");
+  try { const r = await createUserWithEmailAndPassword(auth, email, pw); await sendEmailVerification(r.user); }
+  catch (e) { showAuth("form", zhAuthErr(e)); }
+};
+$("authReset").onclick = async () => {
+  const { email } = vals(); if (!email) return showAuth("form", "請先在上面輸入 Email，再按忘記密碼。");
+  try { await sendPasswordResetEmail(auth, email); showAuth("form", "重設密碼的信已寄出，請到信箱收信。"); }
+  catch (e) { showAuth("form", zhAuthErr(e)); }
+};
+$("authRecheck").onclick = async () => { await auth.currentUser.reload(); await auth.currentUser.getIdToken(true); route(auth.currentUser); };
+$("authResend").onclick = async () => { try { await sendEmailVerification(auth.currentUser); showAuth("verify", "已重新寄出驗證信。"); } catch (e) { showAuth("verify", zhAuthErr(e)); } };
+$("authOut").onclick = () => signOut(auth);
+document.addEventListener("click", e => { if (e.target && e.target.id === "logoutBtn") signOut(auth).then(() => location.reload()); });
+
+let started = false;
+function route(u){
+  if (!u) return showAuth("form");
+  if (!u.emailVerified) return showAuth("verify");
+  if (!isAdmin(u)) return showAuth("denied");
+  $("authBox").hidden = true;
+  if (!started){
+    started = true;
+    $("whoami").textContent = u.email; $("whoBar").hidden = false;
+    hub.resolve({ db: dbApi, assets: assetsApi, downloads: downloadsApi, user: null, fs, st, auth });
+  }
+}
+setPersistence(auth, browserLocalPersistence).catch(() => {});
+onAuthStateChanged(auth, u => route(u));
+
+// ---------- 搬家：匯入舊紀錄簿匯出的檔案 ----------
+const b64ToBlob = (b64, type) => { const bin = atob(b64), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return new Blob([a], { type }); };
+function swapIds(v, map){
+  if (typeof v === "string") return map[v] || v;
+  if (Array.isArray(v)) return v.map(x => swapIds(x, map));
+  if (v && typeof v === "object"){ const o = {}; for (const k in v) o[k] = swapIds(v[k], map); return o; }
+  return v;
+}
+window.__fbImport = async (file, progress) => {
+  const data = JSON.parse(await file.text());
+  if (!data || data.kind !== "rental-log-export") throw new Error("這不是紀錄簿匯出的搬家檔。");
+  const map = {}, ids = Object.keys(data.assets || {});
+  let n = 0;
+  for (const id of ids){
+    const a = data.assets[id];
+    map[id] = (await upload(b64ToBlob(a.b64, a.type), { type: a.type })).id;
+    progress(`上傳照片與檔案 ${++n} / ${ids.length}`);
+  }
+  const writes = [];
+  for (const [colName, docs] of Object.entries(data.collections || {}))
+    for (const d of docs) writes.push([colName + "/" + d.id, swapIds(d.data, map)]);
+  for (let i = 0; i < writes.length; i += 400){
+    const b = writeBatch(fs);
+    writes.slice(i, i + 400).forEach(([p, d]) => b.set(doc(fs, p), d));
+    await b.commit();
+    progress(`寫入資料 ${Math.min(i + 400, writes.length)} / ${writes.length}`);
+  }
+  return { files: ids.length, docs: writes.length };
+};
+window.__fbIsEmpty = async () => (await getDocs(collection(fs, "units"))).empty && (await getDocs(collection(fs, "contracts"))).empty;

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2b5d52">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="包租代管">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+{{TITLE}}
+{{HEAD_LINKS}}
+<style>
+html,body{margin:0}
+body{background:var(--bg,#f3f2ee)}
+.authbox{position:fixed;inset:0;z-index:100;background:var(--bg,#f3f2ee);display:flex;align-items:center;justify-content:center;padding:24px 16px;overflow-y:auto}
+.authcard{width:min(380px,100%);background:var(--surface,#fff);border:1px solid var(--line,#ddd);border-radius:16px;padding:28px 22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 6px 24px rgba(0,0,0,.06)}
+.authcard .logo{display:flex;align-items:center;gap:12px}
+.authcard .logo img{width:52px;height:52px;border-radius:12px}
+.authcard h1{margin:0;font-size:22px;color:var(--accent,#2b5d52)}
+.authcard p{margin:0;font-size:14px;color:var(--muted,#666);line-height:1.6}
+.authcard label{display:flex;flex-direction:column;gap:4px;font-size:13.5px;color:var(--muted,#666)}
+.authcard input{font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line,#ccc);border-radius:10px;background:var(--bg,#fafafa);color:var(--fg,#111)}
+.authcard button{font:inherit;font-size:15px;padding:11px 14px;border-radius:10px;border:1px solid var(--line,#ccc);background:var(--surface,#fff);color:var(--fg,#111);cursor:pointer}
+.authcard button.primary{background:var(--accent,#2b5d52);border-color:var(--accent,#2b5d52);color:var(--accent-ink,#fff);font-weight:700}
+.authcard .row{display:flex;gap:8px}.authcard .row button{flex:1}
+.authcard .link{border:0;background:none;color:var(--accent,#2b5d52);padding:4px;font-size:13.5px;text-decoration:underline}
+.authmsg{font-size:14px;padding:10px 12px;border-radius:10px;background:var(--warn-soft,#fbefd5);color:var(--warn,#8a5a00)}
+.whobar{display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--muted,#666);padding:calc(env(safe-area-inset-top,0px) + 6px) 16px 0;max-width:1200px;margin:0 auto}
+.whobar button{font:inherit;font-size:12.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--line,#ccc);background:var(--surface,#fff);color:var(--fg,#111);cursor:pointer}
+.mvbox{position:fixed;inset:0;z-index:90;background:rgba(10,15,12,.45);display:flex;align-items:center;justify-content:center;padding:16px}
+.mvcard{width:min(460px,100%);background:var(--surface,#fff);color:var(--fg,#111);border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:12px}
+.mvcard h2{margin:0;font-size:19px}
+.mvcard ol{margin:0;padding-left:1.3em;font-size:14px;line-height:1.7}
+.mvcard .pbtn{display:inline-block;text-align:center;padding:11px 14px;border-radius:10px;background:var(--accent,#2b5d52);color:var(--accent-ink,#fff);font-weight:700;cursor:pointer;position:relative}
+.mvcard .pbtn input{position:absolute;opacity:0;width:1px;height:1px}
+.mvcard .st{font-size:14px;min-height:1.4em}
+.mvcard .row{display:flex;justify-content:flex-end}
+.mvcard button{font:inherit;padding:8px 14px;border-radius:10px;border:1px solid var(--line,#ccc);background:var(--surface,#fff);color:var(--fg,#111)}
+[hidden]{display:none!important}
+</style>
+<script>
+// 紀錄簿會呼叫 window.claude.use(...)，登入成功後才把 Firebase 的資料庫交給它
+(function(){ let res; const p = new Promise(r => res = r);
+  window.__fbHub = { p, resolve: res };
+  window.claude = { use: k => p.then(x => (x && k in x) ? x[k] : null) };
+})();
+</script>
+</head>
+<body>
+<div class="authbox" id="authBox">
+  <div class="authcard">
+    <div class="logo"><img src="icon.png" alt=""><h1>包租代管紀錄簿</h1></div>
+    <div class="authmsg" id="authMsg" hidden></div>
+    <div id="authForm" hidden style="display:flex;flex-direction:column;gap:12px">
+      <p>請用 Email 和密碼登入。第一次使用請輸入 Email、設定密碼後按「註冊」。</p>
+      <label>Email<input id="authEmail" type="email" autocomplete="username" inputmode="email"></label>
+      <label>密碼<input id="authPw" type="password" autocomplete="current-password"></label>
+      <div class="row"><button type="button" class="primary" id="authLogin">登入</button><button type="button" id="authSignup">註冊</button></div>
+      <button type="button" class="link" id="authReset">忘記密碼</button>
+    </div>
+    <div id="authWait" hidden style="display:flex;flex-direction:column;gap:12px">
+      <p id="authWaitText"></p>
+      <button type="button" class="primary" id="authRecheck">我已完成驗證</button>
+      <button type="button" id="authResend">重新寄驗證信</button>
+      <button type="button" class="link" id="authOut">改用其他帳號</button>
+    </div>
+    <p id="authLoading">載入中…</p>
+  </div>
+</div>
+
+<div class="whobar" id="whoBar" hidden><span id="whoami"></span><button type="button" id="moveBtn">資料搬家</button><button type="button" id="logoutBtn">登出</button></div>
+
+<div class="mvbox" id="mvBox" hidden>
+  <div class="mvcard" role="dialog" aria-labelledby="mvTitle">
+    <h2 id="mvTitle">資料搬家</h2>
+    <ol>
+      <li>在 Claude 打開原本的紀錄簿，按上方的「<b>匯出搬家檔</b>」，會下載一個 .json 檔。</li>
+      <li>回到這裡，按下面的按鈕選那個檔案。</li>
+      <li>等進度跑完就好，房號、合約、紀錄、照片、印章都會一起搬過來。</li>
+    </ol>
+    <label class="pbtn">選擇搬家檔<input type="file" id="mvFile" accept=".json,application/json"></label>
+    <div class="st" id="mvStatus"></div>
+    <div class="row"><button type="button" id="mvClose">關閉</button></div>
+  </div>
+</div>
+
+{{APP}}
+
+<script>
+document.getElementById("authLoading").hidden = false;
+document.getElementById("moveBtn").onclick = () => { document.getElementById("mvStatus").textContent = ""; document.getElementById("mvBox").hidden = false; };
+document.getElementById("mvClose").onclick = () => { document.getElementById("mvBox").hidden = true; };
+document.getElementById("mvFile").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  const stEl = document.getElementById("mvStatus");
+  try{
+    if (!(await window.__fbIsEmpty()) && !confirmMove()) return;
+    stEl.textContent = "開始搬家…";
+    const r = await window.__fbImport(f, m => stEl.textContent = m);
+    stEl.textContent = `完成！搬過來 ${r.docs} 筆資料、${r.files} 個照片與檔案。`;
+  }catch(err){ stEl.textContent = "搬家失敗：" + (err.message || err); }
+};
+let moveArmed = false;
+function confirmMove(){ // 已經有資料時，要按第二次才會覆蓋
+  if (moveArmed){ moveArmed = false; return true; }
+  moveArmed = true; document.getElementById("mvStatus").textContent = "這裡已經有資料了。同一筆資料會被搬家檔的內容覆蓋，確定要搬請再選一次檔案。"; return false;
+}
+</script>
+<script type="module">
+import "./js/fb.js";
+document.getElementById("authLoading").hidden = true;
+</script>
+</body>
+</html>
