@@ -21,6 +21,7 @@ service cloud.firestore {
     match /ownerUnits/{unitId} { allow get: if hasRole('owner') && myUnit(unitId); }
     match /ownerContracts/{id} { allow read: if hasRole('owner') && myUnit(resource.data.unitId); }
     match /records/{id} { allow read: if hasRole('owner') && myUnit(resource.data.unitId); }
+    match /meterReads/{id} { allow read: if hasRole('owner') && myUnit(resource.data.unitId); }
 
     // 房客：報修申請（只能新增、看自己的）
     match /requests/{id} {

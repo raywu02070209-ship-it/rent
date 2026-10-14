@@ -13,7 +13,7 @@ function afterRender(fn){ const orig = window.render; window.render = function()
 hub.p.then(x => {
   if (!x) return;
   if (x.role === "tenant") initTenant(x.acc);
-  else if (x.role === "owner") initOwner(x.acc);
+  else if (x.role === "owner"){ initOwner(x.acc); const go = () => (typeof units !== "undefined" && document.querySelector("nav.views")) ? initOwnerMeter(x.acc) : setTimeout(go, 50); go(); }
   else { initAdmin(); const go = () => (typeof db !== "undefined" && db && typeof units !== "undefined") ? initMeter() : setTimeout(go, 50); go(); }
 });
 
@@ -160,8 +160,42 @@ function initTenant(acc){
 /* ======================= 屋主 ======================= */
 function initOwner(acc){
   const sub = document.querySelector("header .sub");
-  if (sub) sub.textContent = `${acc.name || "屋主"} 您好，這裡可以查看您名下房間的租約、合約與維修代墊紀錄（僅供閱覽）。`;
+  if (sub) sub.textContent = `${acc.name || "屋主"} 您好，這裡可以查看您名下房間的租約、合約、維修代墊與電表度數紀錄（僅供閱覽）。`;
   const h = document.querySelector("#viewContracts > .hint"); if (h) h.textContent = "這裡列出您名下房間已完成的租賃合約，可檢視或下載 PDF。";
+}
+
+/* ======================= 屋主：電表度數（唯讀） ======================= */
+function initOwnerMeter(acc){
+  const ids = acc.unitIds || []; let reads = [];
+  const fmtN = n => n == null ? "—" : (Math.round(n * 10) / 10).toLocaleString("zh-TW");
+  const tab = document.createElement("button"); tab.type = "button"; tab.role = "tab"; tab.id = "vMeter"; tab.dataset.view = "meter"; tab.setAttribute("aria-selected", "false"); tab.textContent = "電表";
+  document.querySelector("nav.views").appendChild(tab);
+  const view = document.createElement("div"); view.className = "view"; view.id = "viewMeter"; view.hidden = true;
+  $("viewContracts").after(view);
+  const origSetView = window.setView;
+  window.setView = function(v){ origSetView(v); view.hidden = v !== "meter"; tab.setAttribute("aria-selected", v === "meter"); if (v === "meter") draw(); };
+  tab.onclick = () => window.setView("meter");
+  const line = r => r.mode === "split"
+    ? `110V ${fmtN(r.prev && r.prev.r110)} → ${fmtN(r.cur && r.cur.r110)}・220V ${fmtN(r.prev && r.prev.r220)} → ${fmtN(r.cur && r.cur.r220)}`
+    : `${fmtN(r.prev && r.prev.r)} → ${fmtN(r.cur && r.cur.r)}`;
+  function draw(){
+    if (view.hidden) return;
+    const us = units.filter(u => ids.includes(u.id)).sort((a, b) => String(a.property).localeCompare(String(b.property)) || String(a.room).localeCompare(String(b.room), "zh-Hant", { numeric: true }));
+    const byUnit = u => reads.filter(r => r.unitId === u.id).sort((a, b) => String(b.date + b.createdAt).localeCompare(String(a.date + a.createdAt)));
+    const withReads = us.filter(u => byUnit(u).length);
+    view.innerHTML = `<div class="mt-owner"><p class="hint">這裡是管理人每次抄電表的度數與電費（僅供閱覽）。</p>` + (withReads.length ? withReads.map(u => `<section class="mt-hist"><h3>${E(u.property)}　${E(u.room)}</h3>${byUnit(u).map(r => `<div class="mt-hrow mt-om">
+        <div class="mt-oh"><span>${E(zhDate(r.date))}</span>${r.tenant ? `<span>${E(r.tenant)}</span>` : ""}</div>
+        <div class="mt-ol">${E(line(r))}</div>
+        <div><b class="mt-ok">${fmtN(r.kwh)} 度 × ${E(r.rate)} 元 = ${money(r.amount)}</b></div></div>`).join("")}</section>`).join("")
+      : `<section class="mt-hist"><p class="tp-hint">目前還沒有抄表紀錄。</p></section>`) + `</div>`;
+  }
+  const parts = [];
+  for (let i = 0; i < ids.length; i += 30){
+    const k = parts.length; parts.push([]);
+    window.__fb.watch("meterReads", l => { parts[k] = l; reads = parts.flat(); draw(); }, [["unitId", "in", ids.slice(i, i + 30)]]);
+  }
+  afterRender(draw);
+  try{ if (localStorage.getItem("rl-view") === "meter") window.setView("meter"); }catch(_){}
 }
 
 /* ======================= 電表 ======================= */

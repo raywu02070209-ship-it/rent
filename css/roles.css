@@ -130,3 +130,10 @@ body.role-owner .owners{display:none}
 .mt-hrow.paid .mt-hk{color:var(--muted,#888)}
 .mt-paid{display:flex;gap:4px;align-items:center;margin-left:auto}
 .mt-ha{display:flex;gap:6px}
+
+/* 屋主電表（唯讀） */
+.mt-owner{display:flex;flex-direction:column;gap:12px}
+.mt-om{flex-direction:column;align-items:flex-start;gap:3px}
+.mt-oh{display:flex;gap:12px;font-size:13px;color:var(--muted,#777)}
+.mt-ol{font-size:14px}
+.mt-ok{color:var(--accent,#2b5d52)}
