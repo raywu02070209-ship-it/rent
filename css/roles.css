@@ -1,0 +1,81 @@
+/* ---- 依身分隱藏功能 ---- */
+body:not(.role-admin) #moveBtn{display:none}
+body.role-tenant .wrap{display:none}
+body.role-owner #tfBtn, body.role-owner #addUnitBtn, body.role-owner #addBtn, body.role-owner #moveExportBtn,
+body.role-owner #newContractBtn, body.role-owner #sealBtn, body.role-owner #addPropBtn, body.role-owner .fontpick,
+body.role-owner [data-type="lease"]{display:none!important}
+
+/* ---- 房客頁面 ---- */
+.tp{max-width:640px;margin:0 auto;padding:12px 16px calc(env(safe-area-inset-bottom,0px) + 40px);display:flex;flex-direction:column;gap:14px;color:var(--fg,#16181a)}
+.tp-head{display:flex;gap:12px;align-items:center;padding:8px 0}
+.tp-head img{width:48px;height:48px;border-radius:12px}
+.tp-head h1{margin:0;font-size:22px;color:var(--accent,#2b5d52)}
+.tp-head p{margin:2px 0 0;font-size:14px;color:var(--muted,#666)}
+.tp-card{background:var(--surface,#fff);border:1px solid var(--line,#ddd);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.tp-card h2{margin:0;font-size:18px}
+.tp-card form{display:flex;flex-direction:column;gap:12px}
+.tp-f{display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--muted,#666)}
+.tp-f input,.tp-f textarea,.tp-f select{font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line,#ccc);border-radius:10px;background:var(--bg,#fafafa);color:var(--fg,#111)}
+.tp-seg{display:flex;gap:6px;flex-wrap:wrap}
+.tp-seg label{position:relative}
+.tp-seg input{position:absolute;opacity:0}
+.tp-seg span{display:inline-block;padding:8px 16px;border-radius:999px;border:1px solid var(--line,#ccc);color:var(--fg,#111);font-size:15px;cursor:pointer}
+.tp-seg input:checked + span{background:var(--accent,#2b5d52);border-color:var(--accent,#2b5d52);color:var(--accent-ink,#fff);font-weight:700}
+.tp-seg input:focus-visible + span{outline:2px solid var(--accent,#2b5d52);outline-offset:2px}
+.tp-photos{display:flex;gap:8px;flex-wrap:wrap}
+.tp-ph{position:relative;width:88px;height:88px;border-radius:10px;overflow:hidden;border:1px solid var(--line,#ddd)}
+.tp-ph img{width:100%;height:100%;object-fit:cover}
+.tp-ph button{position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;font-size:13px;cursor:pointer}
+.tp-btn{position:relative;align-self:flex-start;padding:9px 14px;border-radius:10px;border:1px dashed var(--line,#bbb);color:var(--fg,#111);font-size:15px;cursor:pointer}
+.tp-btn input{position:absolute;opacity:0;width:1px;height:1px}
+.tp-primary,.tp-row button.tp-primary{background:var(--accent,#2b5d52);color:var(--accent-ink,#fff);border:1px solid var(--accent,#2b5d52);font:inherit;font-size:16px;font-weight:700;padding:12px 16px;border-radius:12px;cursor:pointer}
+.tp-row{display:flex;gap:8px;flex-wrap:wrap}
+.tp-row button{font:inherit;font-size:15px;padding:10px 14px;border-radius:10px;border:1px solid var(--line,#ccc);background:var(--surface,#fff);color:var(--fg,#111);cursor:pointer}
+.tp-hint{margin:0;font-size:13.5px;color:var(--muted,#666)}
+.tp-err{margin:0;color:var(--bad,#b3261e);font-size:14px}
+.tp-ok{margin:0;color:var(--ok,#1e7a4c);font-weight:700}
+.tp-con{display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:12px;background:var(--bg,#f6f6f3)}
+.tp-con p{margin:0;font-size:14.5px;line-height:1.6}
+.tp-req{padding:10px 0;border-bottom:1px dashed var(--line,#ddd);display:flex;flex-direction:column;gap:4px}
+.tp-req:last-child{border-bottom:0}
+.tp-req p{margin:0;font-size:14.5px;white-space:pre-wrap}
+.tp-req small{color:var(--muted,#777)}
+.tp-req-h{display:flex;gap:8px;align-items:center;justify-content:space-between}
+.tp-chip{font-size:12.5px;padding:2px 9px;border-radius:999px;background:var(--sunk,#eee)}
+.tp-st{font-size:12.5px;font-weight:700;padding:2px 9px;border-radius:999px;background:var(--warn-soft,#fbefd5);color:var(--warn,#8a5a00)}
+.tp-st.st-done{background:var(--ok-soft,#e2f2e8);color:var(--ok,#1e7a4c)}
+.tp-st.st-doing,.tp-st.st-todo{background:var(--accent-soft,#e3efeb);color:var(--accent,#2b5d52)}
+.tp-st.st-rejected{background:var(--sunk,#eee);color:var(--muted,#666)}
+
+/* ---- 管理員：報修收件匣 ---- */
+.rq{border:2px solid var(--accent,#2b5d52);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--surface,#fff);margin-bottom:14px}
+.rq h2{margin:0;font-size:17px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rq-n{font-size:13px;font-weight:700;padding:2px 10px;border-radius:999px;background:var(--accent,#2b5d52);color:var(--accent-ink,#fff)}
+.rq-item{border-top:1px solid var(--line,#ddd);padding-top:10px;display:flex;flex-direction:column;gap:6px}
+.rq-item p{margin:0;white-space:pre-wrap;font-size:14.5px}
+.rq-item small{color:var(--muted,#666)}
+.rq-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:14px}
+.rq-h small{margin-left:auto}
+.rq-ph{display:flex;gap:6px;flex-wrap:wrap}
+.rq-ph img{width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line,#ddd)}
+.rq-a{display:flex;gap:8px}
+.rq-a button{padding:6px 12px;font-size:14px}
+
+/* ---- 管理員：帳號權限 ---- */
+.mvcard.acc{width:min(560px,100%);max-height:calc(100vh - 32px);overflow-y:auto}
+.mvcard.acc h3{margin:6px 0 0;font-size:16px}
+.mvcard.acc .hint{margin:0;font-size:13.5px;color:var(--muted,#666)}
+.mvcard.acc .field{display:flex;flex-direction:column;gap:4px;font-size:13.5px;color:var(--muted,#666)}
+.mvcard.acc input,.mvcard.acc select{font:inherit;font-size:16px;padding:8px 10px;border:1px solid var(--line,#ccc);border-radius:8px;background:var(--bg,#fafafa);color:var(--fg,#111)}
+.acc-seg{display:flex;gap:16px;font-size:15px}
+.acc-row{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line,#ddd)}
+.acc-who{flex:1;min-width:0;font-size:14px;word-break:break-all}
+.acc-who small{color:var(--muted,#666)}
+.acc-row button{padding:5px 10px;font-size:13px}
+.acc-units{display:flex;flex-direction:column;gap:8px;max-height:260px;overflow-y:auto;border:1px solid var(--line,#ddd);border-radius:8px;padding:8px}
+.acc-p > div{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px;color:var(--fg,#111);font-size:14px}
+.acc-p label{display:flex;gap:4px;align-items:center}
+.acc-p small{color:var(--muted,#888)}
+.mvcard .err{color:var(--bad,#b3261e);font-size:14px;margin:0}
+.mvcard .row{gap:8px}
+.mvcard button.primary{background:var(--accent,#2b5d52);color:var(--accent-ink,#fff);border-color:var(--accent,#2b5d52);font-weight:700}

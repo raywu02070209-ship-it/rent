@@ -10,6 +10,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="css/roles.css">
 <title>包租代管紀錄簿</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;700;800&family=IBM+Plex+Mono:wght@500&family=LXGW+WenKai+TC:wght@400;700&family=Huninn&display=swap">
@@ -1356,7 +1357,7 @@ $("form").addEventListener("submit", async e => {
   data.updatedAt = new Date().toISOString();
   $("saveBtn").disabled = true;
   try{
-    if (editing){ data.createdAt = editing.createdAt || data.updatedAt; if (editing.formKey) data.formKey = editing.formKey; await col.doc(editing.id).set(data); toast("已更新"); }
+    if (editing){ data.createdAt = editing.createdAt || data.updatedAt; if (editing.formKey) data.formKey = editing.formKey; if (editing.requestId) data.requestId = editing.requestId; await col.doc(editing.id).set(data); toast("已更新"); }
     else { data.createdAt = data.updatedAt; await col.add(data); toast("已新增"); }
     if (syncU){
       const patch = data.type==="moveout"
@@ -1366,6 +1367,7 @@ $("form").addEventListener("submit", async e => {
       try{ await ucol.doc(syncU.id).update(patch); toast(data.type==="moveout" ? `已儲存，${syncU.room} 改為空房` : `已儲存，${syncU.room} 房客資料已更新`); }
       catch(e){ toast("紀錄已儲存，但房號資料沒有更新"); }
     }
+    try{ window.__afterRecordSave && window.__afterRecordSave(data); }catch(_){}
     closeForm();
   }catch(err){
     if (err && err.code==="unavailable"){ try{ await new Promise(r=>setTimeout(r,600+Math.random()*600)); editing?await col.doc(editing.id).set(data):await col.add(data); closeForm(); toast("已儲存"); }catch(e2){ showErr(e2);} }
@@ -1944,14 +1946,15 @@ function renderContracts(){
   $("contractList").innerHTML = `<div class="clist">${list.map(c => {
     const t = c.tenant || {};
     return `<article class="ccard">
-      <div class="uh"><strong>${esc(c.room||"")}</strong>${c.kind==="renew"?'<span class="chip t-renew">續約</span>':""}<span class="chip ${c.status==="signed"?"c-signed":"c-draft"}">${c.status==="signed"?(c.signedVia==="remote"?"已簽約（遠端）":"已簽約"):"草稿"}</span></div>
+      <div class="uh"><strong>${esc(c.room||"")}</strong>${c.kind==="renew"?'<span class="chip t-renew">續約</span>':""}<span class="chip ${c.status==="signed"?"c-signed":"c-draft"}">${c.status==="signed"?(c.signedVia==="remote"?"已簽約（遠端）":c.signedVia==="tenant"?"已簽約（房客線上）":"已簽約"):c.status==="tenantSigned"?"房客已簽，待確認":c.shareTenant?"草稿・已開放房客線上簽":"草稿"}</span></div>
       <span class="addr">${esc((c.property||"")+(c.floor||""))}</span>
       <span>${t.name?esc(tenantNames(c))+"・":""}月租 ${money(c.rent)}・押金 ${money(c.deposit)}${keyDepTotal(c)?`・磁扣押金 ${money(keyDepTotal(c))}`:""}</span>
       <span class="addr">租期 ${esc(zhDate(c.leaseStart)||"未填")} 至 ${esc(zhDate(c.leaseEnd)||"未填")}</span>
       ${c.status==="signed"?`<span class="addr">簽約時間 ${esc(fmtTs(c.signedAt))}</span>`:""}
       <div class="ua">${c.status==="signed"
         ? (c.signedPdf ? `${downloads?`<button type="button" class="primary" data-csigned="${esc(c.id)}">下載已簽署合約</button>`:""}<button type="button" data-cprev="${esc(c.id)}">檢視條款</button>` : `<button type="button" data-copen="${esc(c.id)}">檢視合約</button>${downloads?`<button type="button" data-cpdf="${esc(c.id)}">下載 PDF</button>`:""}${canWrite && assets ? `<button type="button" data-cfadd="${esc(c.id)}">點交物品</button>` : ""}`)
-        : canWrite?`<button type="button" class="primary" data-csign="${esc(c.id)}">開始簽約</button><button type="button" data-cedit="${esc(c.id)}">編輯條件</button><button type="button" data-cprev="${esc(c.id)}">預覽</button><button type="button" data-creview="${esc(c.id)}">審閱版 PDF</button>${c.kind==="renew" ? `<button type="button" data-cremote="${esc(c.id)}">待簽版 PDF</button>${assets?`<button type="button" data-cupload="${esc(c.id)}">上傳已簽署合約</button>`:""}` : ""}`:""}</div>
+        : c.status==="tenantSigned" ? (canWrite ? `<button type="button" class="primary" data-cfinal="${esc(c.id)}">代理人確認完成</button><button type="button" data-cprev="${esc(c.id)}">檢視條款</button>` : "")
+        : canWrite?`<button type="button" class="primary" data-csign="${esc(c.id)}">開始簽約</button><button type="button" data-cedit="${esc(c.id)}">編輯條件</button><button type="button" data-cprev="${esc(c.id)}">預覽</button><button type="button" data-creview="${esc(c.id)}">審閱版 PDF</button>${c.kind==="renew" ? `<button type="button" data-cshare="${esc(c.id)}">${c.shareTenant?"取消房客線上簽":"開放房客線上簽"}</button><button type="button" data-cremote="${esc(c.id)}">待簽版 PDF</button>${assets?`<button type="button" data-cupload="${esc(c.id)}">上傳已簽署合約</button>`:""}` : ""}`:""}</div>
       ${c.status!=="signed" ? `<span class="addr" style="color:${c.reviewDate && reviewDays(c.reviewDate, c.signDate)>=3 ? "var(--ok)" : "var(--warn)"}">${c.reviewDate ? `已交付審閱 ${esc(zhDate(c.reviewDate))}・至簽約日 ${Math.max(0, reviewDays(c.reviewDate, c.signDate)||0)} 天` : "尚未交付審閱"}</span>` : ""}
     </article>`; }).join("")}</div>`;
 }
@@ -2253,7 +2256,8 @@ function startSigning(c){
   { const uu = units.find(x=>x.id===c.unitId); if (uu && uu.floor) S.c.floor = uu.floor; }
   S.c.tenant = S.c.tenant || {}; S.c.guarantor = S.c.guarantor || {}; S.c.stamps = {}; S.c.signDate = c.signDate || today();
   S.c.cleaning = S.c.cleaning || "agent";
-  if (S.c.kind==="renew"){
+  if (window.__role==="tenant" && (c.prevIdPhotos||[]).length){ S.reuseIds = c.prevIdPhotos.slice(); S.useOldIds = true; }
+  else if (S.c.kind==="renew"){
     const pc = prevContractOf(u);
     if (pc){
       if (!S.c.tenant.name) S.c.tenant = JSON.parse(JSON.stringify(pc.tenant||{}));
@@ -2371,7 +2375,7 @@ function drawStep(){
       ${c.hasGuarantor && S.sig.tenant && !S.sig.guarantor ? `<div class="pad"><canvas id="padG" aria-label="保證人簽名板"></canvas><div class="pb"><span>保證人 ${esc(c.guarantor.name)} 簽名</span><span><button type="button" id="padGClear">清除</button> <button type="button" class="primary" id="padGOk">確認保證人簽名</button></span></div></div>`:""}
       ${S.sig.tenant ? `<div class="docscroll" id="signDoc">${docHTML(c,{interactive:true, urls:S.sig})}</div>` : ""}
       <p class="err" id="sErr" hidden></p>
-      <div class="nextbar"><button type="button" id="back1">上一步</button>${S.sig.tenant?`<button type="button" class="primary" id="toStep3" ${done<need.length?"disabled":""}>${done<need.length?`還有 ${need.length-done} 處未簽`:"下一步：代理人確認"}</button>`:""}</div>`;
+      <div class="nextbar"><button type="button" id="back1">上一步</button>${S.sig.tenant?`<button type="button" class="primary" id="toStep3" ${done<need.length?"disabled":""}>${done<need.length?`還有 ${need.length-done} 處未簽`:(window.__role==="tenant"?"下一步：確認送出":"下一步：代理人確認")}</button>`:""}</div>`;
     $("back1").onclick = () => { S.step = 1; drawStep(); };
     if (!S.sig.tenant){
       const pad = makePad($("padT"));
@@ -2392,6 +2396,7 @@ function drawStep(){
     });
     if ($("toStep3")) $("toStep3").onclick = () => { S.step = 3; drawStep(); $("signWrap").scrollTop = 0; };
   } else if (S.step===3){
+    if (window.__role==="tenant"){ window.__tenantStep3 && window.__tenantStep3(b); return; }
     const seal = agentCfg.sealId;
     b.innerHTML = `<h2>代理人確認</h2>
       <p class="lead">房客已完成 ${tenantSpots(c).length + tenant2Spots(c).length} 處簽名。請把裝置拿回來確認，合約上的代理人欄位會自動套印姓名與印章，不需要另外簽名。</p>
@@ -2402,6 +2407,7 @@ function drawStep(){
       <p class="err" id="sErr" hidden></p>
       <div class="nextbar"><button type="button" id="back2">上一步</button><button type="button" class="primary" id="finishBtn">完成簽約</button></div>`;
     $("back2").onclick = () => { S.step = 2; drawStep(); };
+    if (S.finalizeOnly) $("back2").hidden = true;
     if ($("goSeal")) $("goSeal").onclick = () => { sealConfirm = null; $("sealErr").hidden = true; $("sScrim").hidden = false; renderSeals(); };
     $("finishBtn").onclick = finishSigning;
   }
@@ -2431,7 +2437,7 @@ async function finishSigning(){
     const now = new Date().toISOString();
     c.stamps.agentParties = stampOn(c.signDate); c.stamps.agentAnnex = c.stamps.agentParties; (c.actual ||= {}).agent = now;
     const data = { floor: c.floor || "", actualStamps: c.actual || {}, tenant:c.tenant, tenant2:c.hasCoTenant?c.tenant2:{}, guarantor:c.hasGuarantor?c.guarantor:{}, cleaning:c.cleaning, stamps:c.stamps, sigs, idPhotos, seals: currentSeals(c),
-      signDate:c.signDate, signedAt:now, status:"signed", updatedAt:now };
+      signDate:c.signDate, signedAt:now, status:"signed", updatedAt:now, ...(S.finalizeOnly ? {signedVia:"tenant", shareTenant:true} : {}) };
     // 1. 合約
     await ccol.doc(c.id).update(data);
     // 2. 紀錄
@@ -3191,6 +3197,7 @@ function confirmMove(){ // 已經有資料時，要按第二次才會覆蓋
   moveArmed = true; document.getElementById("mvStatus").textContent = "這裡已經有資料了。同一筆資料會被搬家檔的內容覆蓋，確定要搬請再選一次檔案。"; return false;
 }
 </script>
+<script src="js/roles.js"></script>
 <script type="module">
 import "./js/fb.js";
 document.getElementById("authLoading").hidden = true;

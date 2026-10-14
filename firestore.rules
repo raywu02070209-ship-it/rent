@@ -1,13 +1,41 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isAdmin() {
-      return request.auth != null
-        && request.auth.token.email_verified == true
-        && request.auth.token.email == 'raywu02070209@gmail.com';
+    function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
+    function isAdmin() { return signedIn() && request.auth.token.email == 'raywu02070209@gmail.com'; }
+    function accPath() { return /databases/$(database)/documents/access/$(request.auth.token.email); }
+    function acc() { return get(accPath()).data; }
+    function hasRole(r) { return signedIn() && exists(accPath()) && acc().role == r; }
+    function myUnit(id) { return id in acc().unitIds; }
+
+    // 管理員：全部
+    match /{document=**} { allow read, write: if isAdmin(); }
+
+    // 每個人只能讀自己的權限資料
+    match /access/{email} { allow get: if signedIn() && request.auth.token.email == email; }
+
+    // 代理人資訊、合約字體（產生合約 PDF 用）
+    match /settings/{id} { allow get: if (hasRole('tenant') || hasRole('owner')) && id in ['agent', 'doc']; }
+
+    // 屋主：自己名下房號（不含私人備註的副本）、已簽合約副本、紀錄
+    match /ownerUnits/{unitId} { allow get: if hasRole('owner') && myUnit(unitId); }
+    match /ownerContracts/{id} { allow read: if hasRole('owner') && myUnit(resource.data.unitId); }
+    match /records/{id} { allow read: if hasRole('owner') && myUnit(resource.data.unitId); }
+
+    // 房客：報修申請（只能新增、看自己的）
+    match /requests/{id} {
+      allow read: if hasRole('tenant') && resource.data.uid == request.auth.uid;
+      allow create: if hasRole('tenant') && request.resource.data.uid == request.auth.uid
+        && myUnit(request.resource.data.unitId) && request.resource.data.status == 'new';
     }
-    match /{document=**} {
-      allow read, write: if isAdmin();
+
+    // 房客：管理員開放的續約合約，只能簽名送出
+    match /contracts/{id} {
+      allow read: if hasRole('tenant') && myUnit(resource.data.unitId) && resource.data.shareTenant == true;
+      allow update: if hasRole('tenant') && myUnit(resource.data.unitId) && resource.data.shareTenant == true
+        && resource.data.status == 'draft' && request.resource.data.status == 'tenantSigned'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          ['tenant', 'tenant2', 'guarantor', 'cleaning', 'stamps', 'sigs', 'idPhotos', 'actualStamps', 'status', 'tenantSignedAt', 'updatedAt']);
     }
   }
 }

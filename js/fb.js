@@ -3,7 +3,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.0/fireba
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
   sendEmailVerification, sendPasswordResetEmail, signOut, setPersistence, browserLocalPersistence }
   from "https://www.gstatic.com/firebasejs/12.17.0/firebase-auth.js";
-import { initializeFirestore, collection, doc, onSnapshot, addDoc, setDoc, deleteDoc, getDocs, writeBatch }
+import { initializeFirestore, collection, doc, onSnapshot, addDoc, setDoc, deleteDoc, getDocs, getDoc, writeBatch, query, where }
   from "https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject }
   from "https://www.gstatic.com/firebasejs/12.17.0/firebase-storage.js";
@@ -47,12 +47,65 @@ function colApi(name){
 }
 const dbApi = { collection: colApi, doc: docApi };
 
+// ---------- 房客／屋主：只讀得到自己房號的資料 ----------
+const denied = () => Promise.reject(Object.assign(new Error("唯讀"), { code: "invalid_argument" }));
+const emptyCol = { onSnapshot: cb => { setTimeout(() => cb({ docs: [] }), 0); return () => {}; }, add: denied, doc: () => emptyDoc };
+const emptyDoc = { onSnapshot: cb => { setTimeout(() => cb({ id: "", exists: false, data: () => undefined }), 0); return () => {}; }, set: denied, update: denied, delete: denied };
+const chunks = (a, n) => { const out = []; for (let i = 0; i < a.length; i += n) out.push(a.slice(i, i + n)); return out; };
+// 多個 query（每次最多 30 個房號）合併成一個快照
+function mergedQuery(queries){
+  return {
+    onSnapshot: (cb, onErr) => {
+      if (!queries.length){ setTimeout(() => cb({ docs: [] }), 0); return () => {}; }
+      const parts = queries.map(() => null);
+      const unsubs = queries.map((q, i) => onSnapshot(q, s => { parts[i] = s.docs.map(docSnap); if (parts.every(Boolean)) cb({ docs: parts.flat() }); }, e => onErr && onErr(mapErr(e))));
+      return () => unsubs.forEach(u => u());
+    },
+    add: denied,
+    doc: () => emptyDoc,
+  };
+}
+function perDoc(colName, ids){   // 逐一監聽指定文件（屋主的房號）
+  return {
+    onSnapshot: (cb, onErr) => {
+      if (!ids.length){ setTimeout(() => cb({ docs: [] }), 0); return () => {}; }
+      const got = new Map();
+      const unsubs = ids.map(id => onSnapshot(doc(fs, colName, id), s => { got.set(id, s.exists() ? docSnap(s) : null); if (got.size === ids.length) cb({ docs: [...got.values()].filter(Boolean) }); }, () => { got.set(id, null); if (got.size === ids.length) cb({ docs: [...got.values()].filter(Boolean) }); }));
+      return () => unsubs.forEach(u => u());
+    },
+    add: denied, doc: () => emptyDoc,
+  };
+}
+function roleDb(role, acc){
+  const ids = acc.unitIds || [];
+  const inIds = (col, extra = []) => chunks(ids, 30).map(c => query(collection(fs, col), where("unitId", "in", c), ...extra));
+  const readDoc = path => ({ ...docApi(path), set: denied, update: denied, delete: denied });
+  const settingsOk = p => p === "settings/agent" || p === "settings/doc";
+  if (role === "owner") return {
+    collection: name => name === "units" ? perDoc("ownerUnits", ids)
+      : name === "contracts" ? mergedQuery(inIds("ownerContracts"))
+      : name === "records" ? mergedQuery(inIds("records")) : emptyCol,
+    doc: path => settingsOk(path) ? readDoc(path) : emptyDoc,
+  };
+  // tenant
+  return {
+    collection: name => {
+      if (name !== "contracts") return emptyCol;
+      const m = mergedQuery(inIds("contracts", [where("shareTenant", "==", true)]));
+      m.doc = id => docApi("contracts/" + id);
+      return m;
+    },
+    doc: path => settingsOk(path) ? readDoc(path) : emptyDoc,
+  };
+}
+
 // ---------- 檔案（照片、簽名、印章、合約 PDF） ----------
 const rid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 const EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "application/pdf": "pdf" };
+let uploadDir = "files";
 async function upload(blob, opts){
   const type = (opts && opts.type) || blob.type || "application/octet-stream";
-  const r = ref(st, `files/${rid()}.${EXT[type] || "bin"}`);
+  const r = ref(st, `${uploadDir}/${rid()}.${EXT[type] || "bin"}`);
   await wrap(uploadBytes(r, blob, { contentType: type, cacheControl: "public,max-age=31536000" }));
   return { id: await getDownloadURL(r) };     // 之後直接用這個網址顯示
 }
@@ -113,16 +166,28 @@ $("authOut").onclick = () => signOut(auth);
 document.addEventListener("click", e => { if (e.target && e.target.id === "logoutBtn") signOut(auth).then(() => location.reload()); });
 
 let started = false;
-function route(u){
+async function route(u){
   if (!u) return showAuth("form");
   if (!u.emailVerified) return showAuth("verify");
-  if (!isAdmin(u)) return showAuth("denied");
-  $("authBox").hidden = true;
-  if (!started){
-    started = true;
-    $("whoami").textContent = u.email; $("whoBar").hidden = false;
-    hub.resolve({ db: dbApi, assets: assetsApi, downloads: downloadsApi, user: null, fs, st, auth });
+  let role = "admin", acc = {};
+  if (!isAdmin(u)){
+    try{
+      const s = await getDoc(doc(fs, "access", (u.email || "").toLowerCase()));
+      if (!s.exists()) return showAuth("denied");
+      acc = s.data(); role = acc.role;
+      if (role !== "tenant" && role !== "owner") return showAuth("denied");
+    }catch(e){ return showAuth("denied"); }
   }
+  $("authBox").hidden = true;
+  if (started) return;
+  started = true;
+  window.__role = role; window.__acc = acc; window.__uid = u.uid;
+  document.body.classList.add("role-" + role);
+  $("whoami").textContent = (acc.name ? acc.name + "・" : "") + u.email; $("whoBar").hidden = false;
+  if (role === "tenant") uploadDir = "t/" + u.uid;
+  const ro = { can: async () => role === "admin" };
+  hub.resolve({ db: role === "admin" ? dbApi : roleDb(role, acc), assets: role === "owner" ? null : assetsApi,
+    downloads: downloadsApi, user: role === "admin" ? null : ro, role, acc });
 }
 setPersistence(auth, browserLocalPersistence).catch(() => {});
 onAuthStateChanged(auth, u => route(u));
@@ -157,3 +222,13 @@ window.__fbImport = async (file, progress) => {
   return { files: ids.length, docs: writes.length };
 };
 window.__fbIsEmpty = async () => (await getDocs(collection(fs, "units"))).empty && (await getDocs(collection(fs, "contracts"))).empty;
+
+// ---------- 給 roles.js 用的工具 ----------
+window.__fb = {
+  addDoc: (col, d) => wrap(addDoc(collection(fs, col), d)).then(r => r.id),
+  setDoc: (path, d, merge) => wrap(setDoc(doc(fs, path), d, merge ? { merge: true } : undefined)),
+  deleteDoc: path => wrap(deleteDoc(doc(fs, path))),
+  watch: (col, cb, filters) => onSnapshot(filters ? query(collection(fs, col), ...filters.map(f => where(...f))) : collection(fs, col),
+    s => cb(s.docs.map(d => ({ id: d.id, ...d.data() }))), () => cb([])),
+  upload,
+};
