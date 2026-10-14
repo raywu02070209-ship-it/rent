@@ -454,6 +454,33 @@ function initAdmin(){
     });
   }
 
+  // ---- 房號編輯時一併開通／更新房客帳號 ----
+  window.__unitAccEmails = uid => accList.filter(a => a.role === "tenant" && (a.unitIds || []).includes(uid)).map(a => a.email || a.id);
+  window.__afterUnitSave = async (uid, d) => {
+    const u = { id: uid, ...d };
+    const want = [[d.tenantEmail, d.tenant, d.honor, d.phone], [d.tenantEmail2, d.tenant2 || d.tenant, d.tenant2 ? d.honor2 : d.honor, d.tenant2 ? (d.phone2 || d.phone) : d.phone]].filter(x => x[0]);
+    const emails = want.map(x => x[0]);
+    const msgs = [];
+    try{
+      // 這間房原本開給、但已經拿掉的 Email → 取消這間房（沒有其他房間就刪除帳號）
+      for (const a of accList.filter(a => a.role === "tenant" && (a.unitIds || []).includes(uid) && !emails.includes(a.email || a.id))){
+        const left = a.unitIds.filter(i => i !== uid), rooms = { ...(a.rooms || {}) }; delete rooms[uid];
+        if (left.length) await window.__fb.setDoc("access/" + a.id, { unitIds: left, rooms }, true); else await window.__fb.deleteDoc("access/" + a.id);
+        msgs.push("已停用 " + (a.email || a.id));
+      }
+      for (const [email, name, honor, phone] of want){
+        if (email === "raywu02070209@gmail.com"){ msgs.push("管理員帳號不用開通"); continue; }
+        const ex = accList.find(a => (a.email || a.id) === email);
+        if (ex && ex.role === "owner"){ msgs.push(email + " 已是屋主帳號，未改成房客"); continue; }
+        const ids = [...new Set([...((ex && ex.unitIds) || []), uid])];
+        const rooms = { ...((ex && ex.rooms) || {}), [uid]: unitLabel(u) };
+        await window.__fb.setDoc("access/" + email, { role: "tenant", email, name: (name || "") + (honor || ""), phone: phone || "", unitIds: ids, rooms, ...(ex ? {} : { createdAt: nowISO() }) }, true);
+        if (!ex) msgs.push("已開通房客帳號 " + email);
+      }
+      if (msgs.length) toast(msgs.join("；") + (msgs.some(m => m.startsWith("已開通")) ? "，請房客用這個 Email 到網站註冊" : ""));
+    }catch(_){ toast("房號已存，但房客帳號更新失敗，請再存一次"); }
+  };
+
   // ---- 紀錄存檔後：同步報修狀態、退租自動停用房客帳號 ----
   window.__afterRecordSave = data => {
     if (data.requestId) window.__fb.setDoc("requests/" + data.requestId, { status: data.status, updatedAt: nowISO() }, true).catch(() => {});

@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="css/roles.css?v=20261014i">
+<link rel="stylesheet" href="css/roles.css?v=20261014j">
 <title>套房管理系統</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;700;800&family=IBM+Plex+Mono:wght@500&family=LXGW+WenKai+TC:wght@400;700&family=Huninn&display=swap">
@@ -704,8 +704,10 @@ fieldset.grp .full{grid-column:1/-1}
       <label class="field full"><span>屋主（出租人）</span><select id="u_ownerSel"></select><input id="u_owner" type="hidden"></label>
       <div class="field"><span>目前房客</span><div class="who"><input id="u_tenant" placeholder="姓氏或姓名，空房留空" aria-label="目前房客姓名"><select id="u_honor" aria-label="稱謂"><option value="">稱謂</option><option value="先生">先生</option><option value="小姐">小姐</option></select></div></div>
       <label class="field"><span>房客電話</span><input id="u_phone" inputmode="tel" placeholder="選填"></label>
+      <label class="field full u-acc"><span>房客登入 Email（填了就開通房客帳號）</span><input id="u_tenantEmail" type="email" inputmode="email" autocomplete="off" placeholder="選填，例如 tenant@gmail.com"></label>
       <div class="field"><span>共同承租人（選填）</span><div class="who"><input id="u_tenant2" placeholder="第二位承租人" aria-label="共同承租人姓名"><select id="u_honor2" aria-label="稱謂"><option value="">稱謂</option><option value="先生">先生</option><option value="小姐">小姐</option></select></div></div>
       <label class="field"><span>共同承租人電話</span><input id="u_phone2" inputmode="tel" placeholder="選填"></label>
+      <label class="field full u-acc"><span>共同承租人登入 Email（選填，兩人可各自登入）</span><input id="u_tenantEmail2" type="email" inputmode="email" autocomplete="off" placeholder="選填"></label>
       <label class="field"><span>租期起日</span><input type="date" id="u_leaseStart"></label>
       <label class="field"><span>租期迄日</span><input type="date" id="u_leaseEnd"></label>
       <label class="field"><span>月租金（元）</span><input id="u_rent" type="number" inputmode="numeric" min="0" step="1" placeholder="0"></label>
@@ -1369,7 +1371,7 @@ $("form").addEventListener("submit", async e => {
     else { data.createdAt = data.updatedAt; await col.add(data); toast("已新增"); }
     if (syncU){
       const patch = data.type==="moveout"
-        ? {tenant:"", honor:"", phone:"", tenant2:"", honor2:"", phone2:"", leaseStart:"", leaseEnd:"", emergency:"", keyDeposit:0, meter:{mode:"", start:"", start110:"", start220:"", date:""}, lastTenant: who(data.tenant,data.honor) || unitTenants(syncU) || "", vacantSince: data.leaseEnd || data.date}
+        ? {tenant:"", honor:"", phone:"", tenantEmail:"", tenant2:"", honor2:"", phone2:"", tenantEmail2:"", leaseStart:"", leaseEnd:"", emergency:"", keyDeposit:0, meter:{mode:"", start:"", start110:"", start220:"", date:""}, lastTenant: who(data.tenant,data.honor) || unitTenants(syncU) || "", vacantSince: data.leaseEnd || data.date}
         : {...(syncU.tenant2 && data.tenant===unitTenants(syncU) ? {} : {tenant:data.tenant, honor:data.honor, phone:data.phone, tenant2:"", honor2:"", phone2:""}), leaseStart:data.leaseStart, leaseEnd:data.leaseEnd, rent:data.rent, deposit:data.deposit, keyDeposit:data.keyDeposit};
       patch.updatedAt = data.updatedAt;
       try{ await ucol.doc(syncU.id).update(patch); toast(data.type==="moveout" ? `已儲存，${syncU.room} 改為空房` : `已儲存，${syncU.room} 房客資料已更新`); }
@@ -1400,13 +1402,14 @@ $("fStatus").onchange = e => { filter.status = e.target.value; render(); };
 $("fBill").onchange = e => { filter.bill = e.target.value; render(); };
 $("fSearch").oninput = e => { filter.q = e.target.value; render(); };
 
-const UF = ["property","room","floor","owner","tenant","honor","phone","tenant2","honor2","phone2","leaseStart","leaseEnd","rent","deposit","keyDeposit","emergency","payDay","note"];
+const UF = ["property","room","floor","owner","tenant","honor","phone","tenantEmail","tenant2","honor2","phone2","tenantEmail2","leaseStart","leaseEnd","rent","deposit","keyDeposit","emergency","payDay","note"];
 function openUnit(id){
   if (!canWrite){ toast("你目前只能檢視，無法新增或修改"); return; }
   uEditing = id ? units.find(u=>u.id===id) : null; uConfirmDel = false;
   const u = uEditing || {};
   $("uFormTitle").textContent = uEditing ? `編輯 ${u.property} ${u.room}` : "新增房號";
   UF.forEach(k => $("u_"+k).value = u[k] ?? "");
+  if (uEditing && window.__unitAccEmails && !u.tenantEmail && !u.tenantEmail2){ const em = window.__unitAccEmails(u.id); $("u_tenantEmail").value = em[0] || ""; $("u_tenantEmail2").value = em[1] || ""; }
   fillPropSel("u_propertySel","u_property"); setPropSel("u_propertySel","u_property", u.property||"");
   fillOwnerSel();
   $("uErr").hidden = true; renderUDel();
@@ -1435,14 +1438,20 @@ $("uForm").addEventListener("submit", async e => {
   { const f = d.floor.replace(/\s+/g,"").replace(/[Ff]$/,"").replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0)-65248));
     let m; if (/^\d+$/.test(f)) d.floor = f + "樓"; else if ((m = f.match(/^(\d+)(?:之|-)(\d+)$/))) d.floor = `${m[1]}樓之${m[2]}`; else d.floor = f; }
   if (!d.property || !d.room){ $("uErr").textContent="請填寫物件與房號。"; $("uErr").hidden=false; return; }
+  d.tenantEmail = d.tenantEmail.toLowerCase(); d.tenantEmail2 = d.tenantEmail2.toLowerCase();
+  { const bad = [d.tenantEmail, d.tenantEmail2].find(x => x && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
+    if (bad){ $("uErr").textContent=`Email「${bad}」格式不正確。`; $("uErr").hidden=false; return; }
+    if ((d.tenantEmail || d.tenantEmail2) && !d.tenant){ $("uErr").textContent="要開通房客帳號，請先填房客姓名。"; $("uErr").hidden=false; return; } }
   const dup = units.find(u => u.id!==uEditing?.id && unitKey(u.property,u.room)===unitKey(d.property,d.room));
   if (dup){ $("uErr").textContent=`${d.property} ${d.room} 已經建立過了。`; $("uErr").hidden=false; return; }
   d.updatedAt = new Date().toISOString();
   ensureProperty(d.property);
   $("uSave").disabled = true;
   try{
+    let savedId = uEditing && uEditing.id;
     if (uEditing){ await ucol.doc(uEditing.id).update(d); toast("已更新房號資料"); }
-    else { d.createdAt = d.updatedAt; d.lastTenant = ""; await ucol.add(d); toast("已新增房號"); }
+    else { d.createdAt = d.updatedAt; d.lastTenant = ""; const r = await ucol.add(d); savedId = r && r.id; toast("已新增房號"); }
+    if (savedId && window.__afterUnitSave) window.__afterUnitSave(savedId, d);
     closeUnit();
   }catch(err){
     $("uErr").textContent = err && err.code==="invalid_argument" ? "沒有寫入權限，資料未儲存。" : "儲存失敗，請稍後再試一次。"; $("uErr").hidden = false;
@@ -3202,9 +3211,9 @@ function confirmMove(){ // 已經有資料時，要按第二次才會覆蓋
   moveArmed = true; document.getElementById("mvStatus").textContent = "這裡已經有資料了。同一筆資料會被搬家檔的內容覆蓋，確定要搬請再選一次檔案。"; return false;
 }
 </script>
-<script src="js/roles.js?v=20261014i"></script>
+<script src="js/roles.js?v=20261014j"></script>
 <script type="module">
-import "./js/fb.js?v=20261014i";
+import "./js/fb.js?v=20261014j";
 document.getElementById("authLoading").hidden = true;
 </script>
 </body>
