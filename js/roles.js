@@ -34,7 +34,7 @@ function initTenant(acc){
   box.innerHTML = `
     <div class="tp-head"><img src="icon.png" alt=""><div><h1>房客服務</h1><p>${E(acc.name || "")}${ids.length ? "・" + ids.map(i => E(rooms[i] || "")).join("、") : ""}</p></div></div>
     <section class="tp-card" id="tpContracts" hidden></section>
-    <section class="tp-card" id="tpMeter" hidden></section>
+    <section class="tp-card" id="tpMeter"><h2>電費紀錄</h2><p class="tp-hint">載入中…</p></section>
     <section class="tp-card">
       <h2>報修／代購／協助申請</h2>
       <form id="tpForm" novalidate>
@@ -132,13 +132,14 @@ function initTenant(acc){
     const parts = [];
     const drawMeter = () => {
       const l = parts.flat().sort((a, b) => String(b.date + b.createdAt).localeCompare(String(a.date + a.createdAt))).slice(0, 24);
-      const el = $("tpMeter"); el.hidden = !l.length;
-      el.innerHTML = `<h2>電費紀錄</h2>` + l.map(r => `<div class="tp-req">
+      const el = $("tpMeter"); el.hidden = false;
+      el.innerHTML = `<h2>電費紀錄</h2>` + (l.length ? "" : `<p class="tp-hint">目前還沒有電費紀錄。管理人抄完電表後，度數和電費會出現在這裡。</p>`) + l.map(r => `<div class="tp-req">
         <div class="tp-req-h"><span class="tp-chip">${E(zhDate(r.date))}</span><span class="tp-st ${r.paid ? "st-done" : "st-todo"}">${r.paid ? "已繳" : "待繳"}</span></div>
         <p>${ids.length > 1 ? E(r.room) + "　" : ""}${E(line(r))}</p><p><b>${fmtN(r.kwh)} 度 × ${E(r.rate)} 元 = ${money(r.amount)}</b></p></div>`).join("");
     };
     for (let i = 0; i < ids.length; i += 30){ const k = parts.length; parts.push([]);
       window.__fb.watch("meterReads", l => { parts[k] = l; drawMeter(); }, [["unitId", "in", ids.slice(i, i + 30)], ["shareTenant", "==", true]]); }
+    if (!ids.length) drawMeter();
   }
 
   { const s3 = document.querySelector('#signSteps span[data-s="3"]'); if (s3) s3.textContent = "3 確認送出"; }
