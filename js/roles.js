@@ -493,6 +493,21 @@ function initAdmin(){
     }
   };
 
+  // ---- 房客線上簽完、等管理人確認的合約：每一頁上方都提醒 ----
+  const signAlert = document.createElement("section"); signAlert.className = "sgn-alert"; signAlert.hidden = true;
+  document.querySelector("nav.views").before(signAlert);
+  const drawSignAlert = () => {
+    const l = contracts.filter(c => c.status === "tenantSigned");
+    signAlert.hidden = !l.length;
+    signAlert.innerHTML = `<b>房客已完成線上簽約，等你確認（${l.length} 份）</b>` + l.map(c => `<div class="sgn-row"><span>${E(unitLabel(c))}${c.tenant && c.tenant.name ? "（" + E(c.tenant.name) + (c.hasCoTenant && c.tenant2 && c.tenant2.name ? "、" + E(c.tenant2.name) : "") + "）" : ""}${c.tenantSignedAt ? "・" + E(fmtTs(c.tenantSignedAt)) + " 送出" : ""}</span><button type="button" class="primary" data-sgngo="${E(c.id)}">前往確認</button></div>`).join("");
+  };
+  signAlert.onclick = e => {
+    const b = e.target.closest("[data-sgngo]"); if (!b) return;
+    window.setView("contracts");
+    setTimeout(() => { const btn = document.querySelector(`[data-cfinal="${CSS.escape(b.dataset.sgngo)}"]`); if (btn){ btn.scrollIntoView({ block: "center", behavior: "smooth" }); btn.classList.add("sgn-flash"); setTimeout(() => btn.classList.remove("sgn-flash"), 2500); } }, 100);
+  };
+  afterRender(drawSignAlert);
+
   // ---- 報修收件匣（紀錄頁最上面） ----
   const inbox = document.createElement("section"); inbox.className = "rq"; inbox.id = "reqInbox"; inbox.hidden = true;
   $("viewRecords").prepend(inbox);
