@@ -102,12 +102,13 @@ function initTenant(acc){
     showAgent();
     const cs = (typeof contracts !== "undefined" ? contracts : []).filter(c => c.shareTenant);
     const el = $("tpContracts"); el.hidden = !cs.length;
-    el.innerHTML = `<h2>續約合約</h2>` + cs.map(c => {
+    cs.sort((a, b) => (a.status === "signed") - (b.status === "signed") || String(b.leaseStart).localeCompare(String(a.leaseStart)));
+    el.innerHTML = `<h2>我的合約</h2>` + cs.map(c => {
       const head = `<p><b>${E(c.room)}</b>　租期 ${E(zhDate(c.leaseStart))} 至 ${E(zhDate(c.leaseEnd))}<br>月租 ${E(money(c.rent))}・押金 ${E(money(c.deposit))}</p>`;
       if (c.status === "draft") return `<div class="tp-con">${head}<p class="tp-hint">管理人已準備好續約合約，請先閱讀內容，確認無誤後簽名送出。</p>
         <div class="tp-row"><button type="button" data-tprev="${E(c.id)}">先預覽合約</button><button type="button" class="tp-primary" data-tsign="${E(c.id)}">閱讀並簽署</button></div></div>`;
       if (c.status === "tenantSigned") return `<div class="tp-con">${head}<p class="tp-ok">已送出簽名，等待管理人確認完成。</p></div>`;
-      if (c.status === "signed") return `<div class="tp-con">${head}<p class="tp-ok">續約已完成。</p><div class="tp-row"><button type="button" data-tview="${E(c.id)}">檢視合約</button><button type="button" class="tp-primary" data-tpdf="${E(c.id)}">下載合約 PDF</button></div></div>`;
+      if (c.status === "signed") return `<div class="tp-con">${head}<p class="tp-ok">合約已生效${c.signedVia === "tenant" ? "（線上續約完成）" : ""}。</p><p class="tp-hint">需要紙本的話，按「下載合約 PDF」存到手機，再自行列印。</p><div class="tp-row"><button type="button" data-tview="${E(c.id)}">${c.signedPdf ? "檢視條款" : "檢視合約"}</button><button type="button" class="tp-primary" data-tpdf="${E(c.id)}">下載合約 PDF</button></div></div>`;
       return "";
     }).join("");
   };
@@ -119,7 +120,7 @@ function initTenant(acc){
     if (b.dataset.tprev) openDoc(c, true);
     else if (b.dataset.tsign) startSigning(c);
     else if (b.dataset.tview) openDoc(c);
-    else if (b.dataset.tpdf) contractPDF(c, b);
+    else if (b.dataset.tpdf) c.signedPdf ? downloadSigned(c, b) : contractPDF(c, b);
   };
 
   { const s3 = document.querySelector('#signSteps span[data-s="3"]'); if (s3) s3.textContent = "3 確認送出"; }
@@ -368,6 +369,13 @@ function initAdmin(){
       const signed = contracts.filter(c => c.status === "signed");
       for (const c of signed){ const v = contractView(c); if (!same(strip(mirrors.ownerContracts.get(c.id)), JSON.parse(JSON.stringify(v)))) await window.__fb.setDoc("ownerContracts/" + c.id, v); }
       for (const id of mirrors.ownerContracts.keys()) if (!signed.some(c => c.id === id)) await window.__fb.deleteDoc("ownerContracts/" + id);
+      // 房客只看得到「目前住在這間的房客」自己那份已簽合約（前房客的合約不會給新房客看）
+      const nm = s => String(s || "").replace(/\s/g, "");
+      const cur = new Set(units.filter(u => u.tenant && u.contractId).map(u => {
+        const c = signed.find(x => x.id === u.contractId);
+        return c && [nm(c.tenant && c.tenant.name), nm(c.tenant2 && c.tenant2.name)].includes(nm(u.tenant)) ? c.id : null;
+      }).filter(Boolean));
+      for (const c of signed){ const want = cur.has(c.id); if (!!c.shareTenant !== want) await window.__fb.setDoc("contracts/" + c.id, { shareTenant: want }, true); }
       syncOwnerAccess();
     }catch(e){ console.warn("mirror", e); }
     finally{ mirrorBusy = false; }

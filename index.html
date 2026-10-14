@@ -2256,7 +2256,7 @@ function startSigning(c){
   { const uu = units.find(x=>x.id===c.unitId); if (uu && uu.floor) S.c.floor = uu.floor; }
   S.c.tenant = S.c.tenant || {}; S.c.guarantor = S.c.guarantor || {}; S.c.stamps = {}; S.c.signDate = c.signDate || today();
   S.c.cleaning = S.c.cleaning || "agent";
-  if (window.__role==="tenant" && (c.prevIdPhotos||[]).length){ S.reuseIds = c.prevIdPhotos.slice(); S.useOldIds = true; }
+  if (window.__role==="tenant"){ /* 房客線上續約：一律由房客自己拍身分證上傳（不沿用前次證件） */ }
   else if (S.c.kind==="renew"){
     const pc = prevContractOf(u);
     if (pc){
@@ -2335,7 +2335,7 @@ function drawStep(){
       <p class="lead">請將手機橫拿拍攝身分證正面與反面，讓證件填滿畫面、字清楚可讀。照片會自動加上「僅供租屋使用」浮水印，並存在這份合約中。</p>
       ${S.useOldIds ? `<div class="progress"><span>沿用前次合約的證件照片（${S.reuseIds.length} 張）</span><button type="button" id="reshoot">重新拍攝</button></div>` : idSlots(c)}
       <h2 style="font-size:18px">退租清潔方式（附約第七條）</h2>
-      <div class="checks"><label><input type="radio" name="clean" value="agent" ${c.cleaning==="agent"?"checked":""}> 委請甲方找專業清潔公司並支付費用</label><label><input type="radio" name="clean" value="self" ${c.cleaning==="self"?"checked":""}> 自行請專業清潔</label></div>
+      <div class="checks"><label><input type="radio" name="clean" value="agent" ${c.cleaning==="agent"?"checked":""} ${window.__role==="tenant"?"disabled":""}> 委請甲方找專業清潔公司並支付費用</label><label><input type="radio" name="clean" value="self" ${c.cleaning==="self"?"checked":""} ${window.__role==="tenant"?"disabled":""}> 自行請專業清潔</label></div>${window.__role==="tenant"?`<p class="lead" style="font-size:13.5px">退租清潔方式由管理人設定，如需更改請聯絡管理人。</p>`:""}
       <p class="err" id="sErr" hidden></p>
       <div class="nextbar"><span></span><button type="button" class="primary" id="toStep2">下一步：閱讀合約並簽名</button></div>`;
     b.querySelectorAll("input[data-idkey]").forEach(inp => inp.addEventListener("change", async e => {
