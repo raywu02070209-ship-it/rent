@@ -178,6 +178,10 @@ async function route(u){
       if (role !== "tenant" && role !== "owner") return showAuth("denied");
     }catch(e){ return showAuth("denied"); }
   }
+  // 管理員的「預覽身分」：用自己的帳號看屋主／房客看到的畫面
+  let preview = null;
+  if (role === "admin"){ try{ preview = JSON.parse(sessionStorage.getItem("rolePreview") || "null"); }catch(_){} }
+  if (preview && (preview.role === "owner" || preview.role === "tenant")){ role = preview.role; acc = preview.acc || {}; window.__preview = true; }
   $("authBox").hidden = true;
   if (started) return;
   started = true;
@@ -185,6 +189,12 @@ async function route(u){
   document.body.classList.add("role-" + role);
   $("whoami").textContent = (acc.name ? acc.name + "・" : "") + u.email; $("whoBar").hidden = false;
   if (role === "tenant") uploadDir = "t/" + u.uid;
+  if (window.__preview){
+    const bar = document.createElement("div"); bar.className = "pvbar";
+    bar.innerHTML = `<span>預覽模式：目前以${role === "owner" ? "屋主" : "房客"}「${(acc.name || "").replace(/[<>&"]/g, "")}」看到的畫面顯示</span><button type="button" id="pvExit">回到管理員</button>`;
+    document.body.prepend(bar);
+    $("pvExit").onclick = () => { sessionStorage.removeItem("rolePreview"); location.reload(); };
+  }
   const ro = { can: async () => role === "admin" };
   hub.resolve({ db: role === "admin" ? dbApi : roleDb(role, acc), assets: role === "owner" ? null : assetsApi,
     downloads: downloadsApi, user: role === "admin" ? null : ro, role, acc });

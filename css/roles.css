@@ -79,3 +79,7 @@ body.role-owner [data-type="lease"]{display:none!important}
 .mvcard .err{color:var(--bad,#b3261e);font-size:14px;margin:0}
 .mvcard .row{gap:8px}
 .mvcard button.primary{background:var(--accent,#2b5d52);color:var(--accent-ink,#fff);border-color:var(--accent,#2b5d52);font-weight:700}
+
+/* ---- 管理員預覽模式 ---- */
+.pvbar{position:sticky;top:0;z-index:60;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;padding:calc(env(safe-area-inset-top,0px) + 8px) 16px 8px;background:#8a5a00;color:#fff;font-size:14px;font-weight:700}
+.pvbar button{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;border:0;background:#fff;color:#8a5a00;cursor:pointer}

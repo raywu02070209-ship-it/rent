@@ -248,6 +248,18 @@ function initAdmin(){
     }catch(_){ b.disabled = false; toast("沒有成功，請再試一次"); }
   };
 
+  // ---- 已簽合約刪除（測試用的合約），要按兩次 ----
+  let cdelArmed = null;
+  $("contractList").addEventListener("click", async e => {
+    const b = e.target.closest("button[data-cdel]"); if (!b) return;
+    e.stopPropagation();
+    const c = contracts.find(x => x.id === b.dataset.cdel); if (!c) return;
+    if (cdelArmed !== c.id){ cdelArmed = c.id; b.textContent = "確定刪除這份合約？"; b.classList.add("solid"); setTimeout(() => { if (cdelArmed === c.id){ cdelArmed = null; b.textContent = "刪除"; b.classList.remove("solid"); } }, 5000); return; }
+    cdelArmed = null;
+    try{ await ccol.doc(c.id).delete(); toast(c.recordId ? "已刪除合約。對應的簽約紀錄請到「紀錄」頁另外刪除" : "已刪除合約"); }
+    catch(_){ toast("刪除失敗，請再試一次"); }
+  }, true);
+
   // ---- 合約：開放房客線上簽、代理人確認完成 ----
   $("contractList").addEventListener("click", async e => {
     const b = e.target.closest("button[data-cshare],button[data-cfinal]"); if (!b) return;
@@ -308,6 +320,36 @@ function initAdmin(){
   }
   const accBtn = document.createElement("button"); accBtn.type = "button"; accBtn.id = "accBtn"; accBtn.textContent = "帳號權限";
   $("whoBar").insertBefore(accBtn, $("moveBtn"));
+
+  // ---- 預覽身分：用管理員帳號看屋主／房客的畫面 ----
+  const pvBtn = document.createElement("button"); pvBtn.type = "button"; pvBtn.id = "pvBtn"; pvBtn.textContent = "預覽屋主／房客畫面";
+  $("whoBar").insertBefore(pvBtn, accBtn);
+  const pvBox = document.createElement("div"); pvBox.className = "mvbox"; pvBox.hidden = true;
+  pvBox.innerHTML = `<div class="mvcard acc" role="dialog" aria-labelledby="pvTitle">
+    <h2 id="pvTitle">預覽屋主／房客畫面</h2>
+    <p class="hint">不用另外註冊帳號，直接用你自己的帳號看看屋主或房客登入後會看到什麼。預覽時送出的報修、簽名都是真的資料，測試完記得刪除。</p>
+    <div class="acc-seg"><label><input type="radio" name="pvRole" value="owner" checked> 屋主</label><label><input type="radio" name="pvRole" value="tenant"> 房客</label></div>
+    <label class="field" id="pvOwnerF"><span>以哪位屋主的身分</span><select id="pvOwner"></select></label>
+    <label class="field" id="pvUnitF" hidden><span>以哪間房的房客身分</span><select id="pvUnit"></select></label>
+    <div class="row"><button type="button" id="pvCancel">取消</button><button type="button" class="primary" id="pvGo">開始預覽</button></div>
+  </div>`;
+  document.body.appendChild(pvBox);
+  const pvSync = () => { const r = document.querySelector("input[name=pvRole]:checked").value; $("pvOwnerF").hidden = r !== "owner"; $("pvUnitF").hidden = r !== "tenant"; };
+  pvBtn.onclick = () => {
+    $("pvOwner").innerHTML = ownerNames().map(n => `<option>${E(n)}</option>`).join("");
+    $("pvUnit").innerHTML = [...units].sort((a, b) => unitLabel(a).localeCompare(unitLabel(b), "zh-Hant", { numeric: true })).map(u => `<option value="${E(u.id)}">${E(unitLabel(u))}${u.tenant ? "（" + E(u.tenant) + "）" : ""}</option>`).join("");
+    pvSync(); pvBox.hidden = false;
+  };
+  pvBox.addEventListener("change", e => { if (e.target.name === "pvRole") pvSync(); });
+  $("pvCancel").onclick = () => { pvBox.hidden = true; };
+  $("pvGo").onclick = () => {
+    const r = document.querySelector("input[name=pvRole]:checked").value;
+    let acc;
+    if (r === "owner"){ const n = $("pvOwner").value; acc = { role: "owner", name: n, ownerName: n, unitIds: ownerUnitIds(n) }; }
+    else { const u = units.find(x => x.id === $("pvUnit").value); if (!u) return; acc = { role: "tenant", name: u.tenant ? u.tenant + (u.honor || "") : "測試房客", phone: u.phone || "", unitIds: [u.id], rooms: { [u.id]: unitLabel(u) } }; }
+    sessionStorage.setItem("rolePreview", JSON.stringify({ role: r, acc }));
+    location.reload();
+  };
   accBtn.onclick = () => { $("accErr").hidden = true; drawAcc(); drawAccForm(); accBox.hidden = false; };
   $("accClose").onclick = () => { accBox.hidden = true; };
   accBox.addEventListener("change", e => { if (e.target.name === "accRole") drawAccForm(); });
