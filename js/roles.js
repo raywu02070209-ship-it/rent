@@ -122,6 +122,7 @@ function initTenant(acc){
     else if (b.dataset.tpdf) contractPDF(c, b);
   };
 
+  { const s3 = document.querySelector('#signSteps span[data-s="3"]'); if (s3) s3.textContent = "3 確認送出"; }
   // 簽完名後的確認送出（取代代理人步驟）
   window.__tenantStep3 = b => {
     const c = S.c;

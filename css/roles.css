@@ -87,3 +87,4 @@ body.role-owner [data-type="lease"]{display:none!important}
 .acc-owners label{display:flex;gap:5px;align-items:center}
 .mvcard.acc .acc-owners input,.mvcard.acc .acc-units input,.mvcard.acc .acc-seg input{width:auto;padding:0;flex:0 0 auto}
 .acc-owners label,.acc-p label{white-space:nowrap}
+body.role-owner .owners{display:none}
