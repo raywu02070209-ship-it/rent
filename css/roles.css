@@ -85,3 +85,5 @@ body.role-owner [data-type="lease"]{display:none!important}
 .pvbar button{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;border:0;background:#fff;color:#8a5a00;cursor:pointer}
 .acc-owners{display:flex;flex-wrap:wrap;gap:6px 16px;color:var(--fg,#111);font-size:15px;padding:6px 0}
 .acc-owners label{display:flex;gap:5px;align-items:center}
+.mvcard.acc .acc-owners input,.mvcard.acc .acc-units input,.mvcard.acc .acc-seg input{width:auto;padding:0;flex:0 0 auto}
+.acc-owners label,.acc-p label{white-space:nowrap}
