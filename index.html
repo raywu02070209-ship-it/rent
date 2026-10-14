@@ -822,6 +822,8 @@ fieldset.grp .full{grid-column:1/-1}
     <fieldset class="grp"><legend>其他條件</legend>
       <div class="field full"><span>附加文件</span>
         <div class="checks"><label><input type="checkbox" id="c_hasPet"> 房客有養寵物（加簽寵物飼養管理規章）</label><label><input type="checkbox" id="c_hasGuarantor"> 需要保證人</label><label><input type="checkbox" id="c_hasCoTenant"> 共同承租（兩位承租人，例如申請租屋補助）</label></div></div>
+      <div class="field full"><span>退租清潔方式（附約第七條）</span>
+        <div class="checks"><label><input type="radio" name="c_clean" value="agent" checked> 委請甲方找專業清潔公司並支付費用</label><label><input type="radio" name="c_clean" value="self"> 自行請專業清潔</label></div></div>
       <label class="field full"><span>其他約定事項（附約，需雙方另行簽名）</span><textarea id="c_otherTerms" placeholder="沒有可留空"></textarea></label>
     </fieldset>
 
@@ -2072,6 +2074,7 @@ function setContractForm(c){
   const ne = c.notaryExec || []; [1,2,3].forEach(i => $("c_ne"+i).checked = ne.includes(i));
   $("c_notaryFee").value = c.notaryFee || ""; $("c_notaryFeeBy").value = c.notaryFeeBy || "lessor"; $("c_notaryAgentFee").value = c.notaryAgentFee || ""; $("c_notaryAgentFeeBy").value = c.notaryAgentFeeBy || "lessor";
   $("notaryBox").hidden = !c.notary;
+  document.querySelector(`input[name=c_clean][value="${c.cleaning==="self"?"self":"agent"}"]`).checked = true;
   $("c_hasPet").checked = !!c.hasPet; $("c_hasGuarantor").checked = !!c.hasGuarantor; $("c_hasCoTenant").checked = !!c.hasCoTenant;
   facRows = (c.facilities||[]).filter(f=>f.name && f.on!==false).map(f=>({name:f.name, on:true, spec:f.spec||"", qty:f.qty||"", price:f.price||""}));
   drawFac(); if ($("c_facCustom")) $("c_facCustom").remove();
@@ -2080,7 +2083,7 @@ function templateFor(u){
   // 沿用同房號、否則同物件最近一份合約的條件
   const prev = [...contracts].filter(c=>c.unitId===u.id).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)))[0]
     || [...contracts].filter(c=>c.property===u.property).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)))[0] || {};
-  const keep = ["includes","includesOther","payMonths","payDay","elecMode","elecRate","meterMode","otherCosts","keys","facilities","lessorTerminate","tenantTerminate","usage","restore","restoreOther","noticeMonths","notify","notary","notaryExec","notaryFee","notaryFeeBy","notaryAgentFee","notaryAgentFeeBy"];
+  const keep = ["includes","includesOther","payMonths","payDay","elecMode","elecRate","meterMode","otherCosts","keys","facilities","lessorTerminate","tenantTerminate","usage","restore","restoreOther","cleaning","noticeMonths","notify","notary","notaryExec","notaryFee","notaryFeeBy","notaryAgentFee","notaryAgentFeeBy"];
   const t = {}; keep.forEach(k => { if (prev[k]!==undefined) t[k] = prev[k]; });
   if (prev.unitId!==u.id && t.facilities) t.facilities = t.facilities.map(f=>({...f}));
   return t;
@@ -2154,6 +2157,7 @@ function collectContract(loose){
     notary: document.querySelector("input[name=c_notary]:checked").value==="yes", notaryExec: [1,2,3].filter(i=>$("c_ne"+i).checked),
     notaryFee: $("c_notaryFee").value, notaryFeeBy: $("c_notaryFeeBy").value, notaryAgentFee: $("c_notaryAgentFee").value, notaryAgentFeeBy: $("c_notaryAgentFeeBy").value,
     hasPet: $("c_hasPet").checked, hasGuarantor: $("c_hasGuarantor").checked, hasCoTenant: $("c_hasCoTenant").checked,
+    cleaning: document.querySelector("input[name=c_clean]:checked").value,
     otherTerms: $("c_otherTerms").value.trim(),
   };
 }
@@ -2265,7 +2269,6 @@ function startSigning(c){
       if (S.c.hasGuarantor && !S.c.guarantor.name) S.c.guarantor = JSON.parse(JSON.stringify(pc.guarantor||{}));
       const need = S.c.hasCoTenant ? 4 : 2;
       if ((pc.idPhotos||[]).length >= need){ S.reuseIds = pc.idPhotos.slice(0, need); S.useOldIds = true; }
-      S.c.cleaning = pc.cleaning || S.c.cleaning;
     } else if (u && u.tenant && !S.c.tenant.name){
       S.c.tenant = {name:u.tenant, honor:u.honor||"", phone:u.phone||""};
       if (S.c.hasCoTenant && u.tenant2) S.c.tenant2 = {name:u.tenant2, honor:u.honor2||"", phone:u.phone2||""};
@@ -2334,8 +2337,6 @@ function drawStep(){
       <h2 style="font-size:18px">身分證件照片 *</h2>
       <p class="lead">請將手機橫拿拍攝身分證正面與反面，讓證件填滿畫面、字清楚可讀。照片會自動加上「僅供租屋使用」浮水印，並存在這份合約中。</p>
       ${S.useOldIds ? `<div class="progress"><span>沿用前次合約的證件照片（${S.reuseIds.length} 張）</span><button type="button" id="reshoot">重新拍攝</button></div>` : idSlots(c)}
-      <h2 style="font-size:18px">退租清潔方式（附約第七條）</h2>
-      <div class="checks"><label><input type="radio" name="clean" value="agent" ${c.cleaning==="agent"?"checked":""} ${window.__role==="tenant"?"disabled":""}> 委請甲方找專業清潔公司並支付費用</label><label><input type="radio" name="clean" value="self" ${c.cleaning==="self"?"checked":""} ${window.__role==="tenant"?"disabled":""}> 自行請專業清潔</label></div>${window.__role==="tenant"?`<p class="lead" style="font-size:13.5px">退租清潔方式由管理人設定，如需更改請聯絡管理人。</p>`:""}
       <p class="err" id="sErr" hidden></p>
       <div class="nextbar"><span></span><button type="button" class="primary" id="toStep2">下一步：閱讀合約並簽名</button></div>`;
     b.querySelectorAll("input[data-idkey]").forEach(inp => inp.addEventListener("change", async e => {
@@ -2352,7 +2353,6 @@ function drawStep(){
       c.tenant.idNo = c.tenant.idNo.toUpperCase(); if (!c.tenant.mailAddr) c.tenant.mailAddr = c.tenant.regAddr;
       if (c.hasCoTenant){ T2F.forEach(([k]) => c.tenant2[k] = $("t2_"+k).value.trim()); c.tenant2.idNo = c.tenant2.idNo.toUpperCase(); if (!c.tenant2.mailAddr) c.tenant2.mailAddr = c.tenant2.regAddr; }
       if (c.hasGuarantor){ GF.forEach(([k]) => c.guarantor[k] = $("g_"+k).value.trim()); c.guarantor.idNo = c.guarantor.idNo.toUpperCase(); if (!c.guarantor.mailAddr) c.guarantor.mailAddr = c.guarantor.regAddr; }
-      c.cleaning = document.querySelector("input[name=clean]:checked").value;
       const miss = TF.filter(f=>f[2] && !c.tenant[f[0]]).map(f=>f[1]);
       if (c.hasCoTenant) T2F.filter(f=>f[2] && !c.tenant2[f[0]]).forEach(f=>miss.push("承租人（二）"+f[1]));
       if (c.hasGuarantor) GF.filter(f=>f[2] && !c.guarantor[f[0]]).forEach(f=>miss.push(f[1]));
@@ -2477,7 +2477,6 @@ function remoteCopy(c){
       if (!cc.tenant.name) cc.tenant = JSON.parse(JSON.stringify(pc.tenant||{}));
       if (cc.hasCoTenant && !cc.tenant2.name) cc.tenant2 = JSON.parse(JSON.stringify(pc.tenant2||{}));
       if (cc.hasGuarantor && !cc.guarantor.name) cc.guarantor = JSON.parse(JSON.stringify(pc.guarantor||{}));
-      cc.cleaning = cc.cleaning || pc.cleaning;
     } else if (u && u.tenant && !cc.tenant.name){
       cc.tenant = {name:u.tenant, honor:u.honor||"", phone:u.phone||""};
       if (cc.hasCoTenant && u.tenant2) cc.tenant2 = {name:u.tenant2, honor:u.honor2||"", phone:u.phone2||""};
