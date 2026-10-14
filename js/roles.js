@@ -156,6 +156,7 @@ function initTenant(acc){
       const err = m => { $("sErr").textContent = m; $("sErr").hidden = false; };
       if (!$("tAck").checked) return err("請勾選確認後再送出。");
       const btn = $("tSend"); btn.disabled = true; btn.textContent = "送出中…";
+      let stage = "上傳簽名與證件照片";
       try{
         const up = async (key, blob) => { if (!S.up[key]) S.up[key] = (await assets.upload(blob, { type: blob.type || "image/png" })).id; return S.up[key]; };
         const sigs = { tenant: await up("sig_tenant", dataURLtoBlob(S.sig.tenant)) };
@@ -165,13 +166,15 @@ function initTenant(acc){
         if (S.useOldIds) idPhotos = S.reuseIds.slice();
         else { idPhotos = [await up("id_front", S.photos.front), await up("id_back", S.photos.back)];
           if (c.hasCoTenant) idPhotos.push(await up("id_front2", S.photos.front2), await up("id_back2", S.photos.back2)); }
-        const now = nowISO();
+        const now = nowISO(); stage = "儲存合約";
         await ccol.doc(c.id).update({ tenant: c.tenant, tenant2: c.hasCoTenant ? c.tenant2 : {}, guarantor: c.hasGuarantor ? c.guarantor : {}, cleaning: c.cleaning,
           stamps: c.stamps, sigs, idPhotos, actualStamps: c.actual || {}, status: "tenantSigned", tenantSignedAt: now, updatedAt: now });
         Object.values(S.previews).forEach(u => URL.revokeObjectURL(u)); S = null;
         $("signWrap").hidden = true; document.body.style.overflow = "";
         toast("已送出簽名，管理人確認後就完成續約");
-      }catch(e){ btn.disabled = false; btn.textContent = "送出簽名"; err("送出失敗，請檢查網路後再按一次。"); }
+      }catch(e){ btn.disabled = false; btn.textContent = "送出簽名"; console.warn(e);
+        const code = String((e && (e.code || e.message)) || "").replace(/^storage\//, "");
+        err(`送出失敗（${stage}：${code === "invalid_argument" || /unauthorized|permission/.test(code) ? "沒有權限" : code === "unavailable" ? "網路不穩" : code || "未知錯誤"}）。請截圖給管理人，或稍後再按一次。`); }
     };
   };
 }
