@@ -6,12 +6,12 @@
 <meta name="theme-color" content="#2b5d52">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="包租代管">
+<meta name="apple-mobile-web-app-title" content="套房管理">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="css/roles.css">
-<title>包租代管紀錄簿</title>
+<title>套房管理系統</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;700;800&family=IBM+Plex+Mono:wght@500&family=LXGW+WenKai+TC:wght@400;700&family=Huninn&display=swap">
 
@@ -543,7 +543,7 @@ fieldset.grp .full{grid-column:1/-1}
 <div class="wrap">
   <header>
     <div>
-      <h1>包租代管紀錄簿</h1>
+      <h1>套房管理系統</h1>
       <p class="sub">房號與房客資料、簽約續約退租、房客協助、待修與代購代墊，一本帳記清楚。</p>
     </div>
     <div class="actions">
@@ -3138,7 +3138,7 @@ $("exportBtn").onclick = async () => {
   const head = ["登記日期","期限","完成日期","類型","物件","房號","房客","電話","事項","說明","廠商/購買地點","金額","費用負擔","請款狀態","處理狀態","租期起日","租期迄日/退租日","月租金","押金","磁扣押金","備註"];
   const rows = visible().map(r=>[r.date,r.due,r.doneDate,TYPE[r.type],r.property,r.room,who(r.tenant,r.honor),r.phone,r.title,r.detail,r.vendor,r.amount,BEARER[r.bearer],BILL[r.billing],STATUS[r.status],r.leaseStart,r.leaseEnd,r.rent||"",r.deposit||"",r.keyDeposit||"",r.note]);
   const csv = "﻿" + [head,...rows].map(a=>a.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\r\n");
-  try{ await downloads.save({filename:`包租代管紀錄_${today()}.csv`, data: new Blob([csv],{type:"text/csv"})}); }
+  try{ await downloads.save({filename:`套房管理紀錄_${today()}.csv`, data: new Blob([csv],{type:"text/csv"})}); }
   catch(e){ toast("沒有下載檔案"); }
 };
 
