@@ -34,6 +34,7 @@ function initTenant(acc){
   box.innerHTML = `
     <div class="tp-head"><img src="icon.png" alt=""><div><h1>房客服務</h1><p>${E(acc.name || "")}${ids.length ? "・" + ids.map(i => E(rooms[i] || "")).join("、") : ""}</p></div></div>
     <section class="tp-card" id="tpContracts" hidden></section>
+    <section class="tp-card" id="tpMeter" hidden></section>
     <section class="tp-card">
       <h2>報修／代購／協助申請</h2>
       <form id="tpForm" novalidate>
@@ -122,6 +123,23 @@ function initTenant(acc){
     else if (b.dataset.tview) openDoc(c);
     else if (b.dataset.tpdf) c.signedPdf ? downloadSigned(c, b) : contractPDF(c, b);
   };
+
+  // 電費紀錄（管理人抄表後自動出現）
+  { const fmtN = n => n == null ? "—" : (Math.round(n * 10) / 10).toLocaleString("zh-TW");
+    const line = r => r.mode === "split"
+      ? `110V ${fmtN(r.prev && r.prev.r110)} → ${fmtN(r.cur && r.cur.r110)}・220V ${fmtN(r.prev && r.prev.r220)} → ${fmtN(r.cur && r.cur.r220)}`
+      : `${fmtN(r.prev && r.prev.r)} → ${fmtN(r.cur && r.cur.r)}`;
+    const parts = [];
+    const drawMeter = () => {
+      const l = parts.flat().sort((a, b) => String(b.date + b.createdAt).localeCompare(String(a.date + a.createdAt))).slice(0, 24);
+      const el = $("tpMeter"); el.hidden = !l.length;
+      el.innerHTML = `<h2>電費紀錄</h2>` + l.map(r => `<div class="tp-req">
+        <div class="tp-req-h"><span class="tp-chip">${E(zhDate(r.date))}</span><span class="tp-st ${r.paid ? "st-done" : "st-todo"}">${r.paid ? "已繳" : "待繳"}</span></div>
+        <p>${ids.length > 1 ? E(r.room) + "　" : ""}${E(line(r))}</p><p><b>${fmtN(r.kwh)} 度 × ${E(r.rate)} 元 = ${money(r.amount)}</b></p></div>`).join("");
+    };
+    for (let i = 0; i < ids.length; i += 30){ const k = parts.length; parts.push([]);
+      window.__fb.watch("meterReads", l => { parts[k] = l; drawMeter(); }, [["unitId", "in", ids.slice(i, i + 30)], ["shareTenant", "==", true]]); }
+  }
 
   { const s3 = document.querySelector('#signSteps span[data-s="3"]'); if (s3) s3.textContent = "3 確認送出"; }
   // 簽完名後的確認送出（取代代理人步驟）
@@ -323,7 +341,7 @@ function initMeter(){
       if (r.err){ bad++; return; }
       const u = units.find(x => x.id === row.dataset.uid);
       list.push({ unitId: u.id, property: u.property, room: u.room, tenant: u.tenant ? u.tenant + (u.honor || "") : "", date, mode: v.mode,
-        prev: v.prev, cur: v.cur, kwh: r.kwh, rate: v.rate, amount: r.amount, paid: false, createdAt: new Date().toISOString() });
+        prev: v.prev, cur: v.cur, kwh: r.kwh, rate: v.rate, amount: r.amount, paid: false, shareTenant: !!u.tenant, createdAt: new Date().toISOString() });
     });
     if (bad) return err(`有 ${bad} 間的度數有問題（紅字），請修正後再儲存。`);
     if (!list.length) return err("請至少輸入一間的本次度數。");
@@ -371,7 +389,16 @@ ${line}
     </div>`).join("");
   }
 
-  window.__fb.watch("meterReads", l => { reads = l; if (!view.hidden) draw(); });
+  // 房客只看得到「目前住這間的房客」的抄表紀錄（前房客的不會給新房客看）
+  const nm = x => String(x || "").replace(/\s/g, "");
+  let shareTimer = null;
+  const syncShare = () => { clearTimeout(shareTimer); shareTimer = setTimeout(() => {
+    reads.forEach(r => { const u = units.find(x => x.id === r.unitId);
+      const want = !!(u && u.tenant && nm(r.tenant).startsWith(nm(u.tenant)));
+      if (!!r.shareTenant !== want) window.__fb.setDoc("meterReads/" + r.id, { shareTenant: want }, true).catch(() => {}); });
+  }, 1500); };
+  window.__fb.watch("meterReads", l => { reads = l; syncShare(); if (!view.hidden) draw(); });
+  afterRender(syncShare);
   db.doc("settings/meter").onSnapshot(d => { if (d.exists) meterCfg = { rate: 5, ...d.data() }; if (!view.hidden) draw(); }, () => {});
   afterRender(() => { if (!view.hidden) draw(); });
   try{ if (localStorage.getItem("rl-view") === "meter") window.setView("meter"); }catch(_){}
