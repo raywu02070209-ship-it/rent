@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="css/roles.css?v=20261014h">
+<link rel="stylesheet" href="css/roles.css?v=20261014i">
 <title>套房管理系統</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;700;800&family=IBM+Plex+Mono:wght@500&family=LXGW+WenKai+TC:wght@400;700&family=Huninn&display=swap">
@@ -176,7 +176,12 @@ tbody tr:last-child td{border-bottom:none}
 .t-moveout{border:1px dashed var(--lease)}
 .lease{grid-column:1/-1;margin:0;min-width:0;display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--sunk)}
 .lease legend{font-size:12.5px;color:var(--muted);letter-spacing:.05em;padding:0 4px}
-.expiring{font-size:14px;padding:10px 14px;border-radius:10px;background:var(--lease-soft);color:var(--lease);display:flex;flex-wrap:wrap;gap:4px 12px}
+.expiring{font-size:14px;padding:10px 14px;border-radius:10px;background:var(--lease-soft);color:var(--lease);display:flex;flex-direction:column;gap:6px}
+.expiring ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column}
+.expiring li{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;padding:6px 0;border-top:1px dashed color-mix(in srgb, currentColor 30%, transparent)}
+.expiring .ex-d{font-weight:700;min-width:9.5em}
+.expiring .ex-n{font-size:12.5px;padding:1px 8px;border-radius:999px;background:color-mix(in srgb, currentColor 14%, transparent)}
+.expiring .ex-u{flex:1 1 16em}
 .expiring b{font-weight:700}
 @media (max-width:480px){.lease{grid-template-columns:1fr}}
 .s-todo{background:var(--bad-soft);color:var(--bad)}
@@ -1050,7 +1055,8 @@ function render(){
   units.forEach(u => { const k = u.property+"|"+u.room; delete latest[k]; if (u.tenant && u.leaseEnd) latest[k] = {...u, type:"unit"}; });
   const soon = Object.values(latest).filter(r=>r.type!=="moveout" && r.leaseEnd>=t && r.leaseEnd<=addDays(t,60)).sort((a,b)=>a.leaseEnd.localeCompare(b.leaseEnd));
   $("expiring").hidden = !soon.length;
-  $("expiring").innerHTML = soon.length ? `<b>60 天內租約到期</b>` + soon.map(r=>`<span>${esc([r.property,r.room].filter(Boolean).join(" "))}${r.tenant?"（"+esc(who(r.tenant,r.honor))+"）":""} ${esc(r.leaseEnd)}</span>`).join("") : "";
+  const left = d => Math.round((new Date(d+"T00:00:00") - new Date(t+"T00:00:00")) / 864e5);
+  $("expiring").innerHTML = soon.length ? `<b>60 天內租約到期（${soon.length} 間）</b><ul>` + soon.map(r=>`<li><span class="ex-d">${esc(zhDate(r.leaseEnd))}</span><span class="ex-n">${left(r.leaseEnd) ? "剩 "+left(r.leaseEnd)+" 天" : "今天到期"}</span><span class="ex-u">${esc([r.property,r.room].filter(Boolean).join(" "))}${r.tenant?"（"+esc(who(r.tenant,r.honor))+"）":""}</span></li>`).join("") + `</ul>` : "";
 
   const props = allProps();
   const sel = $("fProp"), cur = sel.value;
@@ -3196,9 +3202,9 @@ function confirmMove(){ // 已經有資料時，要按第二次才會覆蓋
   moveArmed = true; document.getElementById("mvStatus").textContent = "這裡已經有資料了。同一筆資料會被搬家檔的內容覆蓋，確定要搬請再選一次檔案。"; return false;
 }
 </script>
-<script src="js/roles.js?v=20261014h"></script>
+<script src="js/roles.js?v=20261014i"></script>
 <script type="module">
-import "./js/fb.js?v=20261014h";
+import "./js/fb.js?v=20261014i";
 document.getElementById("authLoading").hidden = true;
 </script>
 </body>
