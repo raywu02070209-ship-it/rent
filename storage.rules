@@ -5,8 +5,9 @@ service firebase.storage {
     function isAdmin() { return signedIn() && request.auth.token.email == 'raywu02070209@gmail.com'; }
     match /{allPaths=**} { allow read, write: if isAdmin(); }
 
-    // 房客上傳報修照片、簽名、證件（只能放進自己的資料夾，10MB 以內，只能新增不能讀取或刪除）
+    // 房客上傳報修照片、簽名、證件（只能放進自己的資料夾，10MB 以內；可讀自己上傳的檔案，不能刪除）
     match /t/{uid}/{file} {
+      allow read: if signedIn() && request.auth.uid == uid;
       allow create: if signedIn() && request.auth.uid == uid
         && request.resource.size < 10 * 1024 * 1024
         && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
