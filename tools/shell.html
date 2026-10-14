@@ -27,6 +27,7 @@ body{background:var(--bg,#f3f2ee)}
 .authcard button.primary{background:var(--accent,#2b5d52);border-color:var(--accent,#2b5d52);color:var(--accent-ink,#fff);font-weight:700}
 .authcard .row{display:flex;gap:8px}.authcard .row button{flex:1}
 .authcard .link{border:0;background:none;color:var(--accent,#2b5d52);padding:4px;font-size:13.5px;text-decoration:underline}
+.authcard .pwrow{display:flex;gap:6px}.authcard .pwrow input{flex:1;min-width:0}.authcard .pwrow button{flex:0 0 auto;padding:10px 12px;font-size:14px}
 .authmsg{font-size:14px;padding:10px 12px;border-radius:10px;background:var(--warn-soft,#fbefd5);color:var(--warn,#8a5a00)}
 .whobar{display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--muted,#666);padding:calc(env(safe-area-inset-top,0px) + 6px) 16px 0;max-width:1200px;margin:0 auto}
 .whobar button{font:inherit;font-size:12.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--line,#ccc);background:var(--surface,#fff);color:var(--fg,#111);cursor:pointer}
@@ -57,7 +58,7 @@ body{background:var(--bg,#f3f2ee)}
     <div id="authForm" hidden style="display:flex;flex-direction:column;gap:12px">
       <p>請用 Email 和密碼登入。第一次使用請輸入 Email、設定密碼後按「註冊」。</p>
       <label>Email<input id="authEmail" type="email" autocomplete="username" inputmode="email"></label>
-      <label>密碼<input id="authPw" type="password" autocomplete="current-password"></label>
+      <label>密碼<span class="pwrow"><input id="authPw" type="password" autocomplete="current-password"><button type="button" id="authEye" aria-label="顯示密碼" aria-pressed="false">顯示</button></span></label>
       <div class="row"><button type="button" class="primary" id="authLogin">登入</button><button type="button" id="authSignup">註冊</button></div>
       <button type="button" class="link" id="authReset">忘記密碼</button>
     </div>
@@ -91,6 +92,9 @@ body{background:var(--bg,#f3f2ee)}
 
 <script>
 document.getElementById("authLoading").hidden = false;
+document.getElementById("authEye").onclick = e => { const i = document.getElementById("authPw"), show = i.type === "password";
+  i.type = show ? "text" : "password"; e.currentTarget.textContent = show ? "隱藏" : "顯示";
+  e.currentTarget.setAttribute("aria-pressed", show); e.currentTarget.setAttribute("aria-label", show ? "隱藏密碼" : "顯示密碼"); };
 document.getElementById("moveBtn").onclick = () => { document.getElementById("mvStatus").textContent = ""; document.getElementById("mvBox").hidden = false; };
 document.getElementById("mvClose").onclick = () => { document.getElementById("mvBox").hidden = true; };
 document.getElementById("mvFile").onchange = async e => {

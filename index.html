@@ -29,6 +29,7 @@ body{background:var(--bg,#f3f2ee)}
 .authcard button.primary{background:var(--accent,#2b5d52);border-color:var(--accent,#2b5d52);color:var(--accent-ink,#fff);font-weight:700}
 .authcard .row{display:flex;gap:8px}.authcard .row button{flex:1}
 .authcard .link{border:0;background:none;color:var(--accent,#2b5d52);padding:4px;font-size:13.5px;text-decoration:underline}
+.authcard .pwrow{display:flex;gap:6px}.authcard .pwrow input{flex:1;min-width:0}.authcard .pwrow button{flex:0 0 auto;padding:10px 12px;font-size:14px}
 .authmsg{font-size:14px;padding:10px 12px;border-radius:10px;background:var(--warn-soft,#fbefd5);color:var(--warn,#8a5a00)}
 .whobar{display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--muted,#666);padding:calc(env(safe-area-inset-top,0px) + 6px) 16px 0;max-width:1200px;margin:0 auto}
 .whobar button{font:inherit;font-size:12.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--line,#ccc);background:var(--surface,#fff);color:var(--fg,#111);cursor:pointer}
@@ -59,7 +60,7 @@ body{background:var(--bg,#f3f2ee)}
     <div id="authForm" hidden style="display:flex;flex-direction:column;gap:12px">
       <p>請用 Email 和密碼登入。第一次使用請輸入 Email、設定密碼後按「註冊」。</p>
       <label>Email<input id="authEmail" type="email" autocomplete="username" inputmode="email"></label>
-      <label>密碼<input id="authPw" type="password" autocomplete="current-password"></label>
+      <label>密碼<span class="pwrow"><input id="authPw" type="password" autocomplete="current-password"><button type="button" id="authEye" aria-label="顯示密碼" aria-pressed="false">顯示</button></span></label>
       <div class="row"><button type="button" class="primary" id="authLogin">登入</button><button type="button" id="authSignup">註冊</button></div>
       <button type="button" class="link" id="authReset">忘記密碼</button>
     </div>
@@ -546,6 +547,7 @@ fieldset.grp .full{grid-column:1/-1}
     </div>
     <div class="actions">
       <button id="exportBtn" type="button" hidden>匯出 CSV</button>
+      <button id="moveExportBtn" type="button" hidden>匯出搬家檔</button>
       <button id="tfBtn" type="button">房客線上申請</button>
       <button id="addUnitBtn" type="button">＋ 新增房號</button>
       <button id="addBtn" class="primary" type="button">＋ 新增紀錄</button>
@@ -1060,6 +1062,7 @@ function render(){
 
   const list = visible();
   $("exportBtn").hidden = !records.length || !downloads;
+  if ($("moveExportBtn")) $("moveExportBtn").hidden = !downloads || typeof BL === "function";
   $("countLine").textContent = loaded ? `顯示 ${list.length} 筆，共 ${records.length} 筆` : "";
 
   if (!list.length){
@@ -3093,6 +3096,36 @@ $("tfImport").onclick = async () => {
   else { toast(`已匯入 ${ok} 筆房客申請`); $("tfPaste").value = ""; tfRows = []; drawTFPreview(); closeTF(); setView("records"); }
 };
 
+// ---------- 搬家：把全部資料（含照片、簽名、印章、合約檔）匯出成一個檔案 ----------
+const blobToB64 = b => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = no; r.readAsDataURL(b); });
+function collectIds(v, set){
+  if (typeof v === "string"){ if (/^[0-9a-f]{32}$/.test(v)) set.add(v); }
+  else if (Array.isArray(v)) v.forEach(x => collectIds(x, set));
+  else if (v && typeof v === "object") Object.values(v).forEach(x => collectIds(x, set));
+}
+async function exportMove(btn){
+  if (!downloads) return;
+  const label = btn.textContent; btn.disabled = true;
+  try{
+    const strip = arr => arr.map(({id, ...data}) => ({id, data}));
+    const settings = [["agent", agentCfg], ["doc", docCfg], ["facility", {custom: facCustom}], ["tenantForm", tfCfg]]
+      .filter(([, d]) => d && Object.keys(d).length).map(([id, data]) => ({id, data}));
+    const collections = {records: strip(records), units: strip(units), properties: strip(properties), contracts: strip(contracts), settings};
+    const ids = new Set(); collectIds(collections, ids);
+    const assetsOut = {}; let n = 0, miss = 0;
+    for (const id of ids){
+      btn.textContent = `打包中 ${++n}/${ids.size}`;
+      try{ const r = await fetch(BL(id)); if (!r.ok) throw 0; const b = await r.blob(); assetsOut[id] = {type: b.type || "application/octet-stream", b64: await blobToB64(b)}; }
+      catch(_){ miss++; }
+    }
+    const out = {kind: "rental-log-export", version: 1, exportedAt: new Date().toISOString(), collections, assets: assetsOut};
+    await downloads.save({filename: `包租代管搬家檔_${today()}.json`, data: new Blob([JSON.stringify(out)], {type: "application/json"})});
+    toast(miss ? `已匯出，但有 ${miss} 個檔案讀不到` : "已匯出搬家檔");
+  }catch(e){ toast("匯出失敗，請再試一次"); }
+  finally{ btn.disabled = false; btn.textContent = label; }
+}
+$("moveExportBtn").onclick = e => exportMove(e.currentTarget);
+
 let downloads = null;
 $("exportBtn").onclick = async () => {
   if (!downloads) return;
@@ -3137,6 +3170,9 @@ function showNotice(m){ $("notice").textContent = m; $("notice").hidden = false;
 
 <script>
 document.getElementById("authLoading").hidden = false;
+document.getElementById("authEye").onclick = e => { const i = document.getElementById("authPw"), show = i.type === "password";
+  i.type = show ? "text" : "password"; e.currentTarget.textContent = show ? "隱藏" : "顯示";
+  e.currentTarget.setAttribute("aria-pressed", show); e.currentTarget.setAttribute("aria-label", show ? "隱藏密碼" : "顯示密碼"); };
 document.getElementById("moveBtn").onclick = () => { document.getElementById("mvStatus").textContent = ""; document.getElementById("mvBox").hidden = false; };
 document.getElementById("mvClose").onclick = () => { document.getElementById("mvBox").hidden = true; };
 document.getElementById("mvFile").onchange = async e => {
