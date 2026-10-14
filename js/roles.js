@@ -194,10 +194,12 @@ function initAdmin(){
   }
   // 屋主帳號的房號清單，跟著房號上的屋主欄位自動更新
   const ownerUnitIds = name => units.filter(u => (u.owner || "") === name || (!u.owner && (properties.find(p => p.name === u.property) || {}).owners?.length === 1 && properties.find(p => p.name === u.property).owners[0] === name)).map(u => u.id).sort();
+  // 多位屋主（例如夫妻各自名下）的房號合在一起
+  const namesUnitIds = names => [...new Set(names.flatMap(n => ownerUnitIds(n)))].sort();
   function syncOwnerAccess(){
     if (typeof uLoaded === "undefined" || !uLoaded) return;
-    accList.filter(a => a.role === "owner" && a.ownerName).forEach(a => {
-      const ids = ownerUnitIds(a.ownerName);
+    accList.filter(a => a.role === "owner" && (a.ownerNames || a.ownerName)).forEach(a => {
+      const ids = namesUnitIds(a.ownerNames || [a.ownerName]);
       if (!same(ids, [...(a.unitIds || [])].sort())) window.__fb.setDoc("access/" + a.id, { unitIds: ids }, true).catch(() => {});
     });
   }
@@ -286,7 +288,7 @@ function initAdmin(){
   const accBox = document.createElement("div"); accBox.className = "mvbox"; accBox.id = "accBox"; accBox.hidden = true;
   accBox.innerHTML = `<div class="mvcard acc" role="dialog" aria-labelledby="accTitle">
     <h2 id="accTitle">帳號權限</h2>
-    <p class="hint">新增房客或屋主的 Email，對方用這個 Email 在網站「註冊」並完成驗證後就能登入。房客只能報修、簽續約；屋主只能閱覽自己名下的房間。</p>
+    <p class="hint">新增房客或屋主的 Email，對方用這個 Email 在網站「註冊」並完成驗證後就能登入。房客只能報修、簽續約；屋主只能閱覽勾選的屋主名下的房間。要修改權限，用同一個 Email 再新增一次就會覆蓋。</p>
     <div id="accList"></div>
     <h3>新增帳號</h3>
     <div class="acc-seg"><label><input type="radio" name="accRole" value="tenant" checked> 房客</label><label><input type="radio" name="accRole" value="owner"> 屋主</label></div>
@@ -294,7 +296,7 @@ function initAdmin(){
     <label class="field"><span>姓名／稱呼</span><input id="accName" placeholder="例：王小明先生"></label>
     <label class="field" id="accPhoneF"><span>電話（房客報修時自動帶入）</span><input id="accPhone" inputmode="tel"></label>
     <div class="field" id="accUnitsF"><span>房號（可複選）</span><div id="accUnits" class="acc-units"></div></div>
-    <label class="field" id="accOwnerF" hidden><span>屋主（依房號上登記的屋主）</span><select id="accOwner"></select><small id="accOwnerHint" class="hint"></small></label>
+    <div class="field" id="accOwnerF" hidden><span>可以看哪些屋主名下的房間（可複選，例如夫妻各自名下的物件）</span><div id="accOwner" class="acc-owners"></div><small id="accOwnerHint" class="hint"></small></div>
     <p class="err" id="accErr" hidden></p>
     <div class="row"><button type="button" id="accClose">關閉</button><button type="button" class="primary" id="accAdd">新增帳號</button></div>
   </div>`;
@@ -307,11 +309,12 @@ function initAdmin(){
       const byProp = new Map(); units.forEach(u => { if (!byProp.has(u.property)) byProp.set(u.property, []); byProp.get(u.property).push(u); });
       $("accUnits").innerHTML = [...byProp].map(([p, us]) => `<div class="acc-p"><b>${E(shortProp(p))}</b><div>${us.sort((a, b) => String(a.room).localeCompare(String(b.room), "zh-Hant", { numeric: true })).map(u => `<label><input type="checkbox" value="${E(u.id)}"> ${E(u.room)}${u.tenant ? `<small>（${E(u.tenant)}）</small>` : ""}</label>`).join("")}</div></div>`).join("");
     } else {
-      $("accOwner").innerHTML = ownerNames().map(n => `<option>${E(n)}</option>`).join("");
-      const upd = () => { $("accOwnerHint").textContent = `名下房號：${ownerUnitIds($("accOwner").value).map(id => unitLabel(units.find(u => u.id === id))).join("、") || "（沒有找到，請先在房號資料填寫屋主）"}`; };
+      $("accOwner").innerHTML = ownerNames().map(n => `<label><input type="checkbox" value="${E(n)}"> ${E(n)}</label>`).join("");
+      const upd = () => { const ns = pickedOwners(); $("accOwnerHint").textContent = ns.length ? `可看到的房號：${namesUnitIds(ns).map(id => unitLabel(units.find(u => u.id === id))).join("、") || "（沒有找到，請先在房號資料填寫屋主）"}` : ""; };
       $("accOwner").onchange = upd; upd();
     }
   }
+  const pickedOwners = () => [...document.querySelectorAll("#accOwner input:checked")].map(i => i.value);
   function drawAcc(){
     const l = [...accList].sort((a, b) => (a.role + a.id).localeCompare(b.role + b.id));
     $("accList").innerHTML = l.length ? l.map(a => `<div class="acc-row"><span class="chip ${a.role === "owner" ? "t-purchase" : "t-assist"}">${a.role === "owner" ? "屋主" : "房客"}</span>
@@ -336,7 +339,9 @@ function initAdmin(){
   document.body.appendChild(pvBox);
   const pvSync = () => { const r = document.querySelector("input[name=pvRole]:checked").value; $("pvOwnerF").hidden = r !== "owner"; $("pvUnitF").hidden = r !== "tenant"; };
   pvBtn.onclick = () => {
-    $("pvOwner").innerHTML = ownerNames().map(n => `<option>${E(n)}</option>`).join("");
+    const oacc = accList.filter(a => a.role === "owner");
+    $("pvOwner").innerHTML = (oacc.length ? `<optgroup label="已開通的屋主帳號">${oacc.map(a => `<option value="acc:${E(a.id)}">${E(a.name || a.id)}（${E(a.id)}）</option>`).join("")}</optgroup>` : "")
+      + `<optgroup label="單一屋主">${ownerNames().map(n => `<option value="name:${E(n)}">${E(n)}</option>`).join("")}</optgroup>`;
     $("pvUnit").innerHTML = [...units].sort((a, b) => unitLabel(a).localeCompare(unitLabel(b), "zh-Hant", { numeric: true })).map(u => `<option value="${E(u.id)}">${E(unitLabel(u))}${u.tenant ? "（" + E(u.tenant) + "）" : ""}</option>`).join("");
     pvSync(); pvBox.hidden = false;
   };
@@ -345,7 +350,11 @@ function initAdmin(){
   $("pvGo").onclick = () => {
     const r = document.querySelector("input[name=pvRole]:checked").value;
     let acc;
-    if (r === "owner"){ const n = $("pvOwner").value; acc = { role: "owner", name: n, ownerName: n, unitIds: ownerUnitIds(n) }; }
+    if (r === "owner"){
+      const v = $("pvOwner").value, a = v.startsWith("acc:") ? accList.find(x => x.id === v.slice(4)) : null;
+      const ns = a ? (a.ownerNames || [a.ownerName]) : [v.slice(5)];
+      acc = { role: "owner", name: a ? (a.name || ns.join("、")) : ns[0], ownerNames: ns, unitIds: namesUnitIds(ns) };
+    }
     else { const u = units.find(x => x.id === $("pvUnit").value); if (!u) return; acc = { role: "tenant", name: u.tenant ? u.tenant + (u.honor || "") : "測試房客", phone: u.phone || "", unitIds: [u.id], rooms: { [u.id]: unitLabel(u) } }; }
     sessionStorage.setItem("rolePreview", JSON.stringify({ role: r, acc }));
     location.reload();
@@ -373,8 +382,8 @@ function initAdmin(){
       const rooms = {}; ids.forEach(id => { rooms[id] = unitLabel(units.find(u => u.id === id)); });
       data = { role, email, name, phone: $("accPhone").value.trim(), unitIds: ids, rooms, createdAt: nowISO() };
     } else {
-      const ownerName = $("accOwner").value; if (!ownerName) return err("請選擇屋主。");
-      data = { role, email, name: name || ownerName, ownerName, unitIds: ownerUnitIds(ownerName), createdAt: nowISO() };
+      const ns = pickedOwners(); if (!ns.length) return err("請勾選至少一位屋主。");
+      data = { role, email, name: name || ns.join("、"), ownerNames: ns, unitIds: namesUnitIds(ns), createdAt: nowISO() };
     }
     err(""); $("accAdd").disabled = true;
     try{ await window.__fb.setDoc("access/" + email, data); toast("已新增帳號，請對方用這個 Email 到網站註冊");
