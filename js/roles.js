@@ -14,7 +14,7 @@ hub.p.then(x => {
   if (!x) return;
   if (x.role === "tenant") initTenant(x.acc);
   else if (x.role === "owner") initOwner(x.acc);
-  else initAdmin();
+  else { initAdmin(); const go = () => (typeof db !== "undefined" && db && typeof units !== "undefined") ? initMeter() : setTimeout(go, 50); go(); }
 });
 
 // 照片壓縮：最長邊 1600px，JPEG
@@ -161,6 +161,185 @@ function initOwner(acc){
   const sub = document.querySelector("header .sub");
   if (sub) sub.textContent = `${acc.name || "屋主"} 您好，這裡可以查看您名下房間的租約、合約與維修代墊紀錄（僅供閱覽）。`;
   const h = document.querySelector("#viewContracts > .hint"); if (h) h.textContent = "這裡列出您名下房間已完成的租賃合約，可檢視或下載 PDF。";
+}
+
+/* ======================= 電表 ======================= */
+function initMeter(){
+  let reads = [], meterCfg = { rate: 5 }, propFilter = "", lastSaved = [];
+  const num = v => { const n = parseFloat(String(v ?? "").replace(/,/g, "")); return isFinite(n) ? n : null; };
+  const fmtN = n => n == null ? "—" : (Math.round(n * 10) / 10).toLocaleString("zh-TW");
+  // 分頁按鈕與頁面
+  const tab = document.createElement("button"); tab.type = "button"; tab.role = "tab"; tab.id = "vMeter"; tab.dataset.view = "meter"; tab.setAttribute("aria-selected", "false"); tab.textContent = "電表";
+  document.querySelector("nav.views").appendChild(tab);
+  const view = document.createElement("div"); view.className = "view"; view.id = "viewMeter"; view.hidden = true;
+  $("viewContracts").after(view);
+  const origSetView = window.setView;
+  window.setView = function(v){ origSetView(v); view.hidden = v !== "meter"; tab.setAttribute("aria-selected", v === "meter"); if (v === "meter") draw(); };
+  tab.onclick = () => window.setView("meter");
+
+  // 每間房的電表設定：依最新合約（分錶／110V・220V 分開／台電自繳）與費率
+  const latestContract = u => contracts.filter(c => c.unitId === u.id && c.status === "signed").sort((a, b) => String(b.signDate || "").localeCompare(String(a.signDate || "")))[0];
+  function setup(u){
+    const c = latestContract(u), m = u.meter || {};
+    const mode = (c && c.elecMode === "self") || m.mode === "self" ? "self" : ((c && c.meterMode === "split") || m.mode === "split" ? "split" : "single");
+    const rate = num(c && c.elecRate) ?? num(meterCfg.rate) ?? 5;
+    return { mode, rate };
+  }
+  const unitReads = u => reads.filter(r => r.unitId === u.id).sort((a, b) => String(b.date + b.createdAt).localeCompare(String(a.date + a.createdAt)));
+  function prevOf(u, mode){
+    const last = unitReads(u)[0];
+    if (last) return { from: "上次抄表 " + last.date, v: last.cur || {} };
+    const m = u.meter || {}, c = latestContract(u) || {};
+    const v = mode === "split" ? { r110: num(m.start110 ?? c.elec110), r220: num(m.start220 ?? c.elec220) } : { r: num(m.start ?? c.elecStart) };
+    const has = Object.values(v).some(x => x != null);
+    return { from: has ? "起租度數" + (m.date ? " " + m.date : "") : "", v };
+  }
+  function calc(mode, prev, cur, rate){
+    const keys = mode === "split" ? ["r110", "r220"] : ["r"];
+    if (keys.some(k => cur[k] == null)) return null;
+    if (keys.some(k => prev[k] == null)) return { err: "請填上次度數" };
+    const parts = keys.map(k => cur[k] - prev[k]);
+    if (parts.some(x => x < 0)) return { err: "本次度數比上次小，請確認" };
+    const kwh = Math.round(parts.reduce((a, b) => a + b, 0) * 10) / 10;
+    return { kwh, parts, amount: Math.round(kwh * rate) };
+  }
+  const props = () => allProps().filter(p => units.some(u => u.property === p));
+  const sortUnits = us => us.sort((a, b) => String(a.room).localeCompare(String(b.room), "zh-Hant", { numeric: true }));
+
+  function draw(){
+    // 重畫前先記住已輸入的度數，畫完再填回去（資料更新時不會把正在輸入的數字清掉）
+    const keep = view.dataset.reset ? [] : [...view.querySelectorAll(".mt-row[data-uid] input")].map(i => [i.closest(".mt-row").dataset.uid, i.getAttribute("data-cur") ? "c" + i.dataset.cur : i.getAttribute("data-prev") ? "p" + i.dataset.prev : "rate", i.value, i === document.activeElement]);
+    const ps = props(); if (propFilter && !ps.includes(propFilter)) propFilter = "";
+    const shown = propFilter ? [propFilter] : ps;
+    const unpaid = reads.filter(r => !r.paid && r.amount > 0);
+    view.innerHTML = `
+      <div class="mt-top">
+        <label class="field"><span>抄表日期</span><input type="date" id="mtDate" value="${E(view.dataset.date || today())}"></label>
+        <label class="field"><span>物件</span><select id="mtProp"><option value="">全部物件</option>${ps.map(p => `<option ${p === propFilter ? "selected" : ""}>${E(p)}</option>`).join("")}</select></label>
+        <label class="field"><span>預設每度（合約沒寫時使用）</span><span class="mt-rate"><input id="mtDefRate" type="number" step="0.1" min="0" inputmode="decimal" value="${E(meterCfg.rate)}"> 元</span></label>
+      </div>
+      <p class="hint">輸入這次抄到的度數，系統會用上次度數自動算出用電度數和電費。費率依各房最新合約的「每度電費」；第一次抄表時，上次度數會帶入起租度數，也可以自己修改。</p>
+      ${unpaid.length ? `<div class="mt-unpaid">尚未收款：${unpaid.length} 筆，共 ${money(unpaid.reduce((a, r) => a + r.amount, 0))}　<button type="button" id="mtShowUnpaid">查看</button></div>` : ""}
+      ${shown.map(p => `<section class="mt-prop"><h3>${E(p)}</h3>${sortUnits(units.filter(u => u.property === p)).map(rowHTML).join("")}</section>`).join("")}
+      <p class="err" id="mtErr" hidden></p>
+      <div class="mt-bar"><span id="mtSum"></span><button type="button" class="primary" id="mtSave">儲存這次抄表</button></div>
+      <section class="mt-hist" id="mtHist">${histHTML()}</section>`;
+    enhanceDates(view); delete view.dataset.reset;
+    keep.forEach(([uid, k, v, focused]) => {
+      const row = view.querySelector(`.mt-row[data-uid="${CSS.escape(uid)}"]`); if (!row) return;
+      const i = k === "rate" ? row.querySelector("[data-rate]") : row.querySelector(k[0] === "c" ? `[data-cur="${k.slice(1)}"]` : `[data-prev="${k.slice(1)}"]`);
+      if (i && (k[0] === "c" || v !== "")) { if (k[0] !== "c" || v) i.value = v; if (focused) i.focus(); }
+    });
+    view.querySelectorAll(".mt-row[data-uid]").forEach(updRow); updSum();
+  }
+  function rowHTML(u){
+    const { mode, rate } = setup(u);
+    const tenant = u.tenant ? `${E(u.tenant)}${E(u.honor || "")}` : `<span class="mt-vac">空房</span>`;
+    if (mode === "self") return `<div class="mt-row mt-self"><div class="mt-h"><b>${E(u.room)}</b>${tenant}</div><small>台電獨立電表，房客自行繳費，不需抄表</small></div>`;
+    const pv = prevOf(u, mode), keys = mode === "split" ? [["r110", "110V"], ["r220", "220V"]] : [["r", ""]];
+    return `<div class="mt-row" data-uid="${E(u.id)}" data-mode="${mode}">
+      <div class="mt-h"><b>${E(u.room)}</b>${tenant}<span class="mt-mode">${mode === "split" ? "110V／220V 分開" : "單一電表"}</span></div>
+      ${keys.map(([k, lb]) => `<div class="mt-in">
+        ${lb ? `<span class="mt-lb">${lb}</span>` : ""}
+        <label><small>上次</small><input data-prev="${k}" inputmode="decimal" value="${pv.v[k] ?? ""}" placeholder="上次度數"></label>
+        <span class="mt-arrow">→</span>
+        <label><small>本次</small><input data-cur="${k}" inputmode="decimal" placeholder="輸入本次度數"></label>
+      </div>`).join("")}
+      <div class="mt-res"><small>${E(pv.from || "沒有上次紀錄，請填上次度數")}</small><span class="mt-rt">每度 <input data-rate inputmode="decimal" value="${E(rate)}"> 元</span><b class="mt-amt"></b></div>
+    </div>`;
+  }
+  function rowVals(row){
+    const g = sel => { const o = {}; row.querySelectorAll(`[${sel}]`).forEach(i => o[i.getAttribute(sel)] = num(i.value)); return o; };
+    return { mode: row.dataset.mode, prev: g("data-prev"), cur: g("data-cur"), rate: num(row.querySelector("[data-rate]").value) ?? 0 };
+  }
+  function updRow(row){
+    const v = rowVals(row), r = calc(v.mode, v.prev, v.cur, v.rate), el = row.querySelector(".mt-amt");
+    el.className = "mt-amt" + (r && r.err ? " bad" : "");
+    el.textContent = !r ? "" : r.err ? r.err : `${fmtN(r.kwh)} 度 × ${v.rate} = ${money(r.amount)}`;
+  }
+  function updSum(){
+    let n = 0, tot = 0;
+    view.querySelectorAll(".mt-row[data-uid]").forEach(row => { const v = rowVals(row), r = calc(v.mode, v.prev, v.cur, v.rate); if (r && !r.err){ n++; tot += r.amount; } });
+    const el = $("mtSum"); if (el) el.textContent = n ? `本次 ${n} 間，電費合計 ${money(tot)}` : "";
+  }
+  view.addEventListener("input", e => { const row = e.target.closest(".mt-row[data-uid]"); if (row) updRow(row); updSum(); });
+  view.addEventListener("change", async e => {
+    if (e.target.id === "mtProp"){ propFilter = e.target.value; view.dataset.date = $("mtDate").value; draw(); }
+    else if (e.target.id === "mtDate"){ view.dataset.date = e.target.value; }
+    else if (e.target.id === "mtDefRate"){ const r = num(e.target.value); if (r != null){ await window.__fb.setDoc("settings/meter", { rate: r }, true); toast("已更新預設電費"); } }
+    else if (e.target.dataset.paid){ await window.__fb.setDoc("meterReads/" + e.target.dataset.paid, { paid: e.target.checked, paidDate: e.target.checked ? today() : "" }, true); }
+  });
+  view.addEventListener("click", async e => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.id === "mtSave") return save(b);
+    if (b.id === "mtShowUnpaid"){ $("mtHist").scrollIntoView({ behavior: "smooth" }); return; }
+    if (b.dataset.copy){ copyText(b.dataset.copy === "all" ? lastSaved.map(msg).join("\n\n") : msg(reads.find(r => r.id === b.dataset.copy) || lastSaved.find(r => r.id === b.dataset.copy)), b); return; }
+    if (b.dataset.mdel){
+      if (b.dataset.armed !== "1"){ b.dataset.armed = "1"; b.textContent = "確定刪除"; b.classList.add("solid"); return; }
+      await window.__fb.deleteDoc("meterReads/" + b.dataset.mdel); toast("已刪除這筆抄表");
+    }
+  });
+  async function save(btn){
+    const err = m => { $("mtErr").textContent = m; $("mtErr").hidden = !m; };
+    const date = $("mtDate").value || today(), list = [];
+    let bad = 0;
+    view.querySelectorAll(".mt-row[data-uid]").forEach(row => {
+      const v = rowVals(row), r = calc(v.mode, v.prev, v.cur, v.rate); if (!r) return;
+      if (r.err){ bad++; return; }
+      const u = units.find(x => x.id === row.dataset.uid);
+      list.push({ unitId: u.id, property: u.property, room: u.room, tenant: u.tenant ? u.tenant + (u.honor || "") : "", date, mode: v.mode,
+        prev: v.prev, cur: v.cur, kwh: r.kwh, rate: v.rate, amount: r.amount, paid: false, createdAt: new Date().toISOString() });
+    });
+    if (bad) return err(`有 ${bad} 間的度數有問題（紅字），請修正後再儲存。`);
+    if (!list.length) return err("請至少輸入一間的本次度數。");
+    err(""); btn.disabled = true; btn.textContent = "儲存中…";
+    try{
+      lastSaved = [];
+      for (const d of list){ const id = await window.__fb.addDoc("meterReads", d); lastSaved.push({ id, ...d }); }
+      toast(`已儲存 ${list.length} 間的抄表`);
+      view.dataset.reset = "1"; view.dataset.date = date; draw(); showDone();
+    }catch(_){ err("儲存失敗，請再試一次。"); btn.disabled = false; btn.textContent = "儲存這次抄表"; }
+  }
+  const msg = r => {
+    if (!r) return "";
+    const line = r.mode === "split"
+      ? `110V：${fmtN(r.prev.r110)} → ${fmtN(r.cur.r110)}（${fmtN(r.cur.r110 - r.prev.r110)} 度）
+220V：${fmtN(r.prev.r220)} → ${fmtN(r.cur.r220)}（${fmtN(r.cur.r220 - r.prev.r220)} 度）`
+      : `上次 ${fmtN(r.prev.r)} 度 → 本次 ${fmtN(r.cur.r)} 度`;
+    return `【電費通知】${shortProp(r.property)} ${r.room}${r.tenant ? " " + r.tenant : ""}
+抄表日期：${zhDate(r.date)}
+${line}
+用電 ${fmtN(r.kwh)} 度 × 每度 ${r.rate} 元 = ${money(r.amount).replace("$", "")} 元`;
+  };
+  async function copyText(t, b){
+    let ok = false; try{ await navigator.clipboard.writeText(t); ok = true; }catch(_){}
+    if (!ok){ const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try{ ok = document.execCommand("copy"); }catch(_){} ta.remove(); }
+    if (b){ const l = b.textContent; b.textContent = ok ? "已複製" : "複製失敗"; setTimeout(() => b.textContent = l, 1500); }
+  }
+  function showDone(){
+    if (!lastSaved.length) return;
+    const box = document.createElement("section"); box.className = "mt-done";
+    box.innerHTML = `<h3>這次電費（${lastSaved.length} 間）</h3>
+      ${lastSaved.map(r => `<div class="mt-msg"><pre>${E(msg(r))}</pre><button type="button" data-copy="${E(r.id)}">複製</button></div>`).join("")}
+      <button type="button" class="primary" data-copy="all">全部複製（貼到 LINE）</button>`;
+    view.querySelector(".mt-bar").after(box); box.scrollIntoView({ behavior: "smooth" });
+  }
+  function histHTML(){
+    const shownUnits = new Set(units.filter(u => !propFilter || u.property === propFilter).map(u => u.id));
+    const l = reads.filter(r => shownUnits.has(r.unitId)).sort((a, b) => String(b.date + b.createdAt).localeCompare(String(a.date + a.createdAt))).slice(0, 60);
+    if (!l.length) return `<h3>抄表紀錄</h3><p class="hint">還沒有抄表紀錄。</p>`;
+    return `<h3>抄表紀錄</h3>` + l.map(r => `<div class="mt-hrow${r.paid ? " paid" : ""}">
+      <span class="mt-hd">${E(zhDate(r.date))}</span><b>${E(shortProp(r.property))} ${E(r.room)}</b><span>${E(r.tenant || "")}</span>
+      <span class="mt-hk">${fmtN(r.kwh)} 度・${money(r.amount)}</span>
+      <label class="mt-paid"><input type="checkbox" data-paid="${E(r.id)}" ${r.paid ? "checked" : ""}> 已收款</label>
+      <span class="mt-ha"><button type="button" data-copy="${E(r.id)}">複製通知</button><button type="button" class="danger" data-mdel="${E(r.id)}">刪除</button></span>
+    </div>`).join("");
+  }
+
+  window.__fb.watch("meterReads", l => { reads = l; if (!view.hidden) draw(); });
+  db.doc("settings/meter").onSnapshot(d => { if (d.exists) meterCfg = { rate: 5, ...d.data() }; if (!view.hidden) draw(); }, () => {});
+  afterRender(() => { if (!view.hidden) draw(); });
+  try{ if (localStorage.getItem("rl-view") === "meter") window.setView("meter"); }catch(_){}
 }
 
 /* ======================= 管理員 ======================= */
