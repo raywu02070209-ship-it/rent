@@ -202,7 +202,7 @@ function initMeter(){
     const parts = keys.map(k => cur[k] - prev[k]);
     if (parts.some(x => x < 0)) return { err: "本次度數比上次小，請確認" };
     const kwh = Math.round(parts.reduce((a, b) => a + b, 0) * 10) / 10;
-    return { kwh, parts, amount: Math.round(kwh * rate) };
+    return { kwh, parts, amount: Math.floor(kwh * rate + 1e-9) };
   }
   const props = () => allProps().filter(p => units.some(u => u.property === p));
   const sortUnits = us => us.sort((a, b) => String(a.room).localeCompare(String(b.room), "zh-Hant", { numeric: true }));
