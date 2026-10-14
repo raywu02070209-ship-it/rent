@@ -11,6 +11,7 @@ import { firebaseConfig, ADMIN_EMAILS } from "./firebase-config.js";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+auth.languageCode = "zh-TW";   // 驗證信、重設密碼信用繁體中文
 const fs = initializeFirestore(app, { ignoreUndefinedProperties: true });
 const st = getStorage(app);
 const $ = id => document.getElementById(id);
