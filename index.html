@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="css/roles.css?v=20261014l">
+<link rel="stylesheet" href="css/roles.css?v=20261019a">
 <title>套房管理系統</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;700;800&family=IBM+Plex+Mono:wght@500&family=LXGW+WenKai+TC:wght@400;700&family=Huninn&display=swap">
@@ -440,6 +440,11 @@ fieldset.grp .full{grid-column:1/-1}
 .doc .psig .spot{border-bottom:none;min-height:44px}
 .doc .sigline{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:10px 0}
 .doc .seal{height:60px;width:auto;max-width:90px;object-fit:contain;vertical-align:middle;margin:-16px 2px -16px 4px;mix-blend-mode:multiply}
+.doc .seal.sm{height:40px;max-width:60px;margin:-10px 2px -10px 4px}
+.sealown{padding-bottom:10px;margin-bottom:10px;border-bottom:1px dashed var(--line)}
+.sealown .sealco{display:flex;align-items:center;gap:8px;font-size:14px;margin:6px 0 8px 4px}
+.sealown .sealco input{width:auto}
+.sealown .sealrep{margin:0 0 8px}
 .fontpick{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--muted)}
 .fontpick select{font:inherit;color:var(--fg);padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
 .sealrow{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);flex-wrap:wrap}
@@ -1707,7 +1712,9 @@ const DOC_FONTS = {
 const FONT_NAME = {ming:'Noto Serif TC', kai:'LXGW WenKai TC', hei:'Noto Sans TC', yuan:'Huninn'};
 let docCfg = {font:"ming"};
 const SEAL = id => id ? `<img class="seal" src="${esc(BL(id))}" alt="印章">` : "";
-function currentSeals(c){ return { owner: ownerInfoOf(c.property, c.owner).sealId || "", agent: agentCfg.sealId || "" }; }
+function currentSeals(c){ const oi = ownerInfoOf(c.property, c.owner); return { owner: oi.sealId || "", owner2: oi.sealId2 || "", ownerRep: oi.rep || "", agent: agentCfg.sealId || "" }; }
+// 出租人印章：個人一顆章；公司行號＝大章（公司章）＋負責人姓名與小章
+const OWNER_SEAL = sl => SEAL(sl.owner) + ((sl.owner2 || sl.ownerRep) ? `　負責人：${esc(sl.ownerRep||"")}${sl.owner2 ? `<img class="seal sm" src="${esc(BL(sl.owner2))}" alt="負責人印章">` : ""}` : "");
 function ownerInfoOf(prop, owner){ const p = properties.find(x=>x.name===prop); return (p && p.ownerInfo && p.ownerInfo[owner]) || {}; }
 
 // ---------- 合約內容 ----------
@@ -1760,7 +1767,7 @@ function docHTML(c, ctx){
   ${c.kind==="renew" ? `<p style="text-align:center;margin:-8px 0 10px;font-weight:700;letter-spacing:.3em">（續約）</p>` : ""}
   <div class="note"><b>【立契約書人】聲明</b><br>契約審閱期：本契約於中華民國 ${fv(roc(c.reviewDate).y)} 年 ${fv(roc(c.reviewDate).m)} 月 ${fv(roc(c.reviewDate).d)} 日經承租人攜回審閱 ${fv(reviewDays(c.reviewDate, c.signDate)!==null ? Math.max(0, reviewDays(c.reviewDate, c.signDate)) : "")} 日（契約審閱期間至少三日）。承租人於契約簽立前得要求本契約及附件影本攜回審閱。
   <div class="sigline">承租人簽章：${TS("review")}</div></div>
-  <p>出租人：${fv(c.owner,1)}${SEAL(seals.owner)}（以下簡稱甲方）</p>
+  <p>出租人：${fv(c.owner,1)}${OWNER_SEAL(seals)}（以下簡稱甲方）</p>
   <p>甲方代理人：${fv(c.agentName)}${SEAL(seals.agent)}　聯絡電話：${fv(c.agentPhone)}（本合約由甲方授權甲方代理人簽約）</p>
   <p>承租人：${fv(t.name,1)}${c.hasCoTenant?`、${fv(t2.name,1)}（共同承租，負連帶責任）`:""}（以下簡稱乙方）</p>
   <p>（乙方向甲方承租房屋，經雙方同意租賃相關之內容如下，本合約相關之金錢皆為新台幣）</p>
@@ -1842,6 +1849,7 @@ function docHTML(c, ctx){
   <div class="parties">
   <p class="phd">出　租　人：</p>
   ${row("姓名（名稱）", `${esc(c.owner||"")}${SEAL(seals.owner)}　（由代理人簽章）`)}
+  ${(seals.owner2 || seals.ownerRep) ? row("負責人", `${esc(seals.ownerRep||"")}${seals.owner2 ? `<img class="seal sm" src="${esc(BL(seals.owner2))}" alt="負責人印章">` : ""}`) : ""}
   ${row("統一編號（身分證明文件編號）", esc(c.ownerIdNo||""))}
   ${row("通訊地址", esc(c.ownerAddress||""))}
   ${row("聯絡電話", `${esc(c.agentPhone||"")}　${esc(c.agentName||"")}（代理人）`)}
@@ -1889,7 +1897,7 @@ function docHTML(c, ctx){
   </ol>
   <div class="keep"><p>其他約定事項：（需經雙方另行簽名始得生效）</p>
   <div class="note" style="min-height:3.5em;white-space:pre-wrap">${c.otherTerms ? esc(c.otherTerms) : "無"}</div>
-  <div class="sigline">甲方：${fv(c.owner)}${SEAL(seals.owner)}　甲方代理人：${fv(c.agentName)}${SEAL(seals.agent)}　聯絡電話：${fv(c.agentPhone)}</div>
+  <div class="sigline">甲方：${fv(c.owner)}${OWNER_SEAL(seals)}　甲方代理人：${fv(c.agentName)}${SEAL(seals.agent)}　聯絡電話：${fv(c.agentPhone)}</div>
   <div class="sigline">甲方代理人簽章：${S("agentAnnex","agent")}</div>
   <div class="sigline">本附約所有內容乙方均確實閱讀並同意遵守　乙方確認簽名：${TS("annex")}</div>
   ${date}</div>
@@ -2578,7 +2586,7 @@ async function processSeal(file){
   const max = 700, sc = Math.min(1, max/Math.max(bmp.width,bmp.height));
   const w = Math.round(bmp.width*sc), h = Math.round(bmp.height*sc);
   const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
-  const cx = cv.getContext("2d"); cx.drawImage(bmp,0,0,w,h);
+  const cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0,0,w,h); cx.drawImage(bmp,0,0,w,h);   // 透明背景的 PNG 先墊白底
   const im = cx.getImageData(0,0,w,h), d = im.data, N = w*h;
   // 印泥多半是紅色：用「紅色程度」分辨印文與紙張，不受光線、陰影、紙張偏灰影響
   const score = new Float32Array(N);
@@ -2630,17 +2638,31 @@ function renderSeals(){
   let h = `<h3 style="margin:4px 0 8px;font-size:15px">代理人</h3>` + sealRowHTML("agent", agentCfg.name || "代理人", "代理人印章", agentCfg.sealId);
   properties.forEach(p => {
     const os = p.owners || []; if (!os.length) return;
-    h += `<h3 style="margin:16px 0 8px;font-size:15px">${esc(p.name)}</h3>` + os.map(o => sealRowHTML(`owner|${p.id}|${o}`, o, "屋主印章", ((p.ownerInfo||{})[o]||{}).sealId)).join("");
+    h += `<h3 style="margin:16px 0 8px;font-size:15px">${esc(p.name)}</h3>` + os.map(o => { const oi = (p.ownerInfo||{})[o]||{}, co = !!(oi.isCo || oi.sealId2 || oi.rep);
+      return `<div class="sealown">` + sealRowHTML(`owner|${p.id}|${o}`, o, co ? "大章（公司章）" : "屋主印章", oi.sealId)
+        + `<label class="sealco"><input type="checkbox" data-sealco="${esc(p.id+"|"+o)}" ${co?"checked":""}> 公司行號（要蓋大小章）</label>`
+        + (co ? `<label class="field sealrep"><span>負責人姓名</span><input data-sealrep="${esc(p.id+"|"+o)}" value="${esc(oi.rep||"")}" placeholder="例：王大明"></label>` + sealRowHTML(`owner2|${p.id}|${o}`, oi.rep || "負責人", "小章（負責人章）", oi.sealId2) : "")
+        + `</div>`; }).join("");
   });
   if (!properties.some(p=>(p.owners||[]).length)) h += `<p class="hint" style="margin-top:12px">尚未登記屋主。請先到「房客・房號」在物件標題下登記屋主。</p>`;
   $("sealList").innerHTML = h;
 }
 async function saveSealId(key, id){
   if (key==="agent"){ await db.doc("settings/agent").set({...agentCfg, sealId:id}); agentCfg = {...agentCfg, sealId:id}; return; }
-  const [,pid,owner] = key.split("|");
-  await pcol.doc(pid).update({ownerInfo: {[owner]: {sealId:id}}});
+  const [kind,pid,owner] = key.split("|");
+  await pcol.doc(pid).update({ownerInfo: {[owner]: kind==="owner2" ? {sealId2:id} : {sealId:id}}});
 }
-function sealIdOf(key){ if (key==="agent") return agentCfg.sealId||""; const [,pid,owner] = key.split("|"); const p = properties.find(x=>x.id===pid); return ((p&&p.ownerInfo||{})[owner]||{}).sealId||""; }
+function sealIdOf(key){ if (key==="agent") return agentCfg.sealId||""; const [kind,pid,owner] = key.split("|"); const p = properties.find(x=>x.id===pid); const oi = (p&&p.ownerInfo||{})[owner]||{}; return (kind==="owner2" ? oi.sealId2 : oi.sealId)||""; }
+$("sealList").addEventListener("change", async e => {
+  const co = e.target.closest("input[data-sealco]"), rp = e.target.closest("input[data-sealrep]");
+  if (!co && !rp) return;
+  const [pid, ...rest] = (co || rp).dataset[co ? "sealco" : "sealrep"].split("|"), owner = rest.join("|");
+  try{
+    if (co) await pcol.doc(pid).update({ownerInfo: {[owner]: co.checked ? {isCo:true} : {isCo:false, rep:"", sealId2:""}}});
+    else { await pcol.doc(pid).update({ownerInfo: {[owner]: {rep: rp.value.trim()}}}); toast("已儲存負責人"); }
+  }catch(_){ toast("沒有存到，請再試一次"); }
+  setTimeout(renderSeals, 300);
+});
 $("sealList").addEventListener("change", async e => {
   const inp = e.target.closest("input[data-seal]"); if (!inp || !inp.files[0]) return;
   const key = inp.dataset.seal, f = inp.files[0]; inp.value = "";
@@ -3211,9 +3233,9 @@ function confirmMove(){ // 已經有資料時，要按第二次才會覆蓋
   moveArmed = true; document.getElementById("mvStatus").textContent = "這裡已經有資料了。同一筆資料會被搬家檔的內容覆蓋，確定要搬請再選一次檔案。"; return false;
 }
 </script>
-<script src="js/roles.js?v=20261014l"></script>
+<script src="js/roles.js?v=20261019a"></script>
 <script type="module">
-import "./js/fb.js?v=20261014l";
+import "./js/fb.js?v=20261019a";
 document.getElementById("authLoading").hidden = true;
 </script>
 </body>
