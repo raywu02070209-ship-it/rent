@@ -141,7 +141,7 @@ function initTenant(acc){
       window.__fb.watch("meterReads", l => { parts[k] = l; drawMeter(); }, [["unitId", "in", ids.slice(i, i + 30)], ["shareTenant", "==", true]]); }
     if (!ids.length) drawMeter();
   }
-  tenantRentSection(ids);
+  tenantRentSection(ids, acc);
 
   { const s3 = document.querySelector('#signSteps span[data-s="3"]'); if (s3) s3.textContent = "3 確認送出"; }
   // 簽完名後的確認送出（取代代理人步驟）
@@ -229,22 +229,81 @@ const ymZh = ym => { const [y, m] = String(ym).split("-").map(Number); return y 
 const payDayNum = u => { const m = String(u.payDay || "").match(/\d+/); return m ? Math.min(31, +m[0]) : 5; };
 const monthsZh = l => { const a = [...(l || [])].sort(); if (!a.length) return ""; return a.length === 1 ? ymZh(a[0]) : `${ymZh(a[0])}～${ymZh(a[a.length - 1])}（${a.length} 個月）`; };
 
-// 房客：租金繳費紀錄（只看得到自己入住期間的）
-function tenantRentSection(ids){
+// 房客：自己回報繳租（上傳轉帳截圖、選是哪幾期），管理人確認
+function tenantRentSection(ids, acc){
   const el = document.createElement("section"); el.className = "tp-card"; el.id = "tpRent";
-  el.innerHTML = `<h2>租金繳費紀錄</h2><p class="tp-hint">載入中…</p>`;
   const m = $("tpMeter"); (m || $("tpContracts")).after(el);
-  const parts = [];
-  const draw = () => {
-    const l = parts.flat().sort((a, b) => String(b.date + b.createdAt).localeCompare(String(a.date + a.createdAt))).slice(0, 24);
-    el.innerHTML = `<h2>租金繳費紀錄</h2>` + (l.length ? l.map(r => `<div class="tp-req">
-      <div class="tp-req-h"><span class="tp-chip">${E(monthsZh(r.months))}</span><span class="tp-st st-done">已收款</span></div>
-      <p><b>${money(r.amount)}</b>　${E(r.method || "")}・${E(zhDate(r.date))} 收款</p></div>`).join("")
-      : `<p class="tp-hint">目前還沒有租金紀錄。管理人確認收到租金後，會顯示在這裡。</p>`);
-  };
-  for (let i = 0; i < ids.length; i += 30){ const k = parts.length; parts.push([]);
-    window.__fb.watch("rentPays", l => { parts[k] = l; draw(); }, [["unitId", "in", ids.slice(i, i + 30)], ["shareTenant", "==", true]]); }
-  if (!ids.length) draw();
+  const rooms = acc.rooms || {}, rents = acc.rents || {};
+  let mine = [], shared = [], unitId = ids[0] || "", photo = null, picked = new Set();
+  const all = () => { const map = new Map(); [...shared, ...mine].forEach(p => map.set(p.id, p)); return [...map.values()]; };
+  const ST = { pending: ["待管理人確認", "st-todo"], rejected: ["已退回", "st-rejected"], ok: ["已確認收款", "st-done"] };
+  const stOf = p => p.status === "pending" ? "pending" : p.status === "rejected" ? "rejected" : "ok";
+  const monthState = (uid, ym) => { const l = all().filter(p => p.unitId === uid && (p.months || []).includes(ym) && stOf(p) !== "rejected"); return l.some(p => stOf(p) === "ok") ? "ok" : l.length ? "pending" : ""; };
+  const rentOf = uid => +(rents[uid] && rents[uid].rent) || 0;
+  function draw(){
+    const keep = el.querySelector("#trAmt") ? { amt: $("trAmt").value, date: $("trDate").value, way: $("trWay").value, note: $("trNote").value } : null;
+    const cur = ymOf(today()), opts = Array.from({ length: 8 }, (_, i) => ymAdd(cur, i - 3));
+    const list = all().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 24);
+    el.innerHTML = `<h2>租金繳費</h2>
+      <p class="tp-hint">繳完租金後，在這裡選是哪幾期、上傳轉帳截圖送出，管理人確認後會顯示「已確認收款」。</p>
+      ${ids.length > 1 ? `<label class="tp-f"><span>房號</span><select id="trUnit">${ids.map(i => `<option value="${E(i)}" ${i === unitId ? "selected" : ""}>${E(rooms[i] || i)}</option>`).join("")}</select></label>` : ""}
+      <div class="tp-f"><span>繳的是哪幾期 *（可複選）</span><div class="tr-months">${opts.map(o => { const st = monthState(unitId, o);
+        return `<label class="${st ? "dis" : ""}"><input type="checkbox" value="${o}" ${st ? "disabled" : picked.has(o) ? "checked" : ""}><span>${E(ymZh(o))}${st === "ok" ? "<small>已繳</small>" : st === "pending" ? "<small>確認中</small>" : ""}</span></label>`; }).join("")}</div></div>
+      <div class="tr-grid">
+        <label class="tp-f"><span>金額（元）*</span><input id="trAmt" inputmode="numeric" placeholder="${rentOf(unitId) ? "月租 " + rentOf(unitId) : "例：12000"}"></label>
+        <label class="tp-f"><span>繳款日期 *</span><input id="trDate" type="date" value="${E(today())}"></label>
+        <label class="tp-f"><span>方式</span><select id="trWay">${RENT_WAYS.map(w => `<option>${w}</option>`).join("")}</select></label>
+        <label class="tp-f"><span>帳號末五碼／備註</span><input id="trNote" placeholder="選填"></label>
+      </div>
+      <div class="tp-f"><span>轉帳或收據截圖 *</span>
+        <div class="tp-photos">${photo ? `<span class="tp-ph"><img src="${photo.url}" alt="繳費截圖"><button type="button" id="trRm" aria-label="移除截圖">✕</button></span>` : ""}</div>
+        ${photo ? "" : `<label class="tp-btn">＋ 上傳截圖或拍照<input type="file" id="trFile" accept="image/*"></label>`}</div>
+      <p class="tp-err" id="trErr" hidden></p>
+      <button type="button" class="tp-primary" id="trSend">送出繳費紀錄</button>
+      <h3 class="tr-h3">我的繳費紀錄</h3>
+      ${list.length ? list.map(p => { const [t, c] = ST[stOf(p)]; return `<div class="tp-req">
+        <div class="tp-req-h"><span class="tp-chip">${E(monthsZh(p.months))}</span><span class="tp-st ${c}">${t}</span></div>
+        <p><b>${money(p.amount)}</b>　${E(p.method || "")}・${E(zhDate(p.date))}${ids.length > 1 ? "・" + E(rooms[p.unitId] || p.room || "") : ""}</p>
+        ${stOf(p) === "rejected" && p.rejectNote ? `<small>退回原因：${E(p.rejectNote)}</small>` : ""}</div>`; }).join("") : `<p class="tp-hint">還沒有繳費紀錄。</p>`}`;
+    if (keep){ $("trAmt").value = keep.amt; $("trDate").value = keep.date; $("trWay").value = keep.way; $("trNote").value = keep.note; }
+    if (!$("trAmt").value && picked.size && rentOf(unitId)) $("trAmt").value = rentOf(unitId) * picked.size;
+  }
+  el.addEventListener("change", async e => {
+    if (e.target.id === "trUnit"){ unitId = e.target.value; picked.clear(); draw(); return; }
+    if (e.target.matches(".tr-months input")){ e.target.checked ? picked.add(e.target.value) : picked.delete(e.target.value);
+      if (rentOf(unitId)) $("trAmt").value = picked.size ? rentOf(unitId) * picked.size : ""; return; }
+    if (e.target.id === "trFile"){ const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+      try{ const b = await shrink(f); photo = { blob: b, url: URL.createObjectURL(b) }; }catch(_){ toast("這張圖片讀不到，請換一張"); } draw(); }
+  });
+  el.addEventListener("click", async e => {
+    if (e.target.closest("#trRm")){ URL.revokeObjectURL(photo.url); photo = null; draw(); return; }
+    if (!e.target.closest("#trSend")) return;
+    const err = m => { $("trErr").textContent = m; $("trErr").hidden = !m; };
+    const months = [...picked].sort(), amount = Math.round(+String($("trAmt").value).replace(/[,\s$]/g, "") || 0);
+    if (!unitId) return err("你的帳號還沒有設定房號，請聯絡管理人。");
+    if (!months.length) return err("請勾選這次繳的是哪幾期。");
+    if (!(amount > 0)) return err("請填金額。");
+    if (!$("trDate").value) return err("請選繳款日期。");
+    if (!photo) return err("請上傳轉帳或收據截圖。");
+    err(""); const btn = $("trSend"); btn.disabled = true; btn.textContent = "送出中…";
+    try{
+      const proof = (await window.__fb.upload(photo.blob, { type: "image/jpeg" })).id;
+      await window.__fb.addDoc("rentPays", { unitId, room: rooms[unitId] || "", tenant: acc.name || "", uid: window.__uid, email: (window.__acc && window.__acc.email) || "",
+        months, month: months[0], amount, date: $("trDate").value, method: $("trWay").value, note: $("trNote").value.trim(), proof,
+        status: "pending", shareTenant: true, createdAt: nowISO() });
+      URL.revokeObjectURL(photo.url); photo = null; picked.clear(); $("trAmt").value = ""; $("trNote").value = ""; draw();
+      toast("已送出，管理人確認後會顯示「已確認收款」");
+    }catch(e2){ console.warn(e2); err("送出失敗，請檢查網路後再試一次。"); }
+    finally{ const b2 = $("trSend"); if (b2){ b2.disabled = false; b2.textContent = "送出繳費紀錄"; } }
+  });
+  for (let i = 0; i < ids.length; i += 30){
+    const chunk = ids.slice(i, i + 30), k = i / 30;
+    window.__fb.watch("rentPays", l => { shared = shared.filter(p => !chunk.includes(p.unitId)).concat(l); draw(); }, [["unitId", "in", chunk], ["shareTenant", "==", true]]);
+  }
+  const mineParts = [];
+  for (let i = 0; i < ids.length; i += 30){ const k = mineParts.length; mineParts.push([]);
+    window.__fb.watch("rentPays", l => { mineParts[k] = l; mine = mineParts.flat(); draw(); }, [["unitId", "in", ids.slice(i, i + 30)], ["uid", "==", window.__uid]]); }
+  draw();
 }
 
 function initRentView(mode, acc){
@@ -259,7 +318,9 @@ function initRentView(mode, acc){
   tab.onclick = () => window.setView("rent");
 
   const myUnits = () => units.filter(u => admin || ownIds.includes(u.id));
-  const paidFor = (u, m) => pays.filter(p => p.unitId === u.id && (p.months || []).includes(m));
+  const okPay = p => p.status !== "pending" && p.status !== "rejected";
+  const paidFor = (u, m) => pays.filter(p => okPay(p) && p.unitId === u.id && (p.months || []).includes(m));
+  const pendFor = (u, m) => pays.filter(p => p.status === "pending" && p.unitId === u.id && (p.months || []).includes(m));
   // 這個月要收租的房間：有房客、有月租，而且租期涵蓋這個月
   const dueUnits = m => myUnits().filter(u => u.tenant && +u.rent > 0 && (!u.leaseStart || ymOf(u.leaseStart) <= m) && (!u.leaseEnd || ymOf(u.leaseEnd) >= m));
   const sortU = us => us.sort((a, b) => String(a.property).localeCompare(String(b.property)) || String(a.room).localeCompare(String(b.room), "zh-Hant", { numeric: true }));
@@ -283,6 +344,7 @@ function initRentView(mode, acc){
         <div><small>已收</small><b class="ok">${money(got)}</b><small>${list.length - unpaid.length} 間</small></div>
         <div><small>未收</small><b class="${unpaid.length ? "bad" : ""}">${money(due - got)}</b><small>${unpaid.length} 間${lateN ? `・逾期 ${lateN}` : ""}</small></div>
       </div>
+      ${admin && pendAll().length ? `<div class="rt-alert"><b>房客回報已繳租，等你確認（${pendAll().length} 筆）</b>${pendAll().map(p => `<div class="sgn-row"><span>${E((u => u ? unitLabel(u) : p.room)(units.find(x => x.id === p.unitId)))}・${E(monthsZh(p.months))}・${money(p.amount)}</span><button type="button" data-rtgo="${E(p.months[0])}">前往確認</button></div>`).join("")}</div>` : ""}
       ${admin ? `<p class="hint">房客繳租後，在那間房按「記錄收款」。一次繳好幾個月的，選「繳了幾個月」就會一起標記。</p>` : `<p class="hint">管理人記錄的每月租金收款狀況（僅供閱覽）。</p>`}
       <section class="rt-list">${list.length ? list.map(u => rowHTML(u, late(u))).join("") : `<p class="hint">這個月沒有需要收租的房間。</p>`}</section>
       <section class="mt-hist rt-hist"><h3>最近收款紀錄</h3>${histHTML()}</section>`;
@@ -290,11 +352,13 @@ function initRentView(mode, acc){
   }
   function rowHTML(u, isLate){
     const ps = paidFor(u, ym), d = payDayNum(u);
-    const st = ps.length ? `<span class="rt-st ok">已收</span>` : isLate ? `<span class="rt-st bad">逾期未收</span>` : `<span class="rt-st">未收</span>`;
+    const pd = ps.length ? [] : pendFor(u, ym);
+    const st = ps.length ? `<span class="rt-st ok">已收</span>` : pd.length ? `<span class="rt-st pend">房客回報已繳</span>` : isLate ? `<span class="rt-st bad">逾期未收</span>` : `<span class="rt-st">未收</span>`;
     const info = ps.length ? ps.map(p => `<small>${E(zhDate(p.date))} ${E(p.method || "")} ${money(p.amount)}${(p.months || []).length > 1 ? `（${E(monthsZh(p.months))}）` : ""}${p.note ? "・" + E(p.note) : ""}</small>`).join("") : `<small>每月 ${d} 號繳</small>`;
     let act = "";
     if (admin){
       if (ps.length) act = ps.map(p => `<button type="button" class="danger ${delArm === p.id ? "solid" : ""}" data-rtdel="${E(p.id)}">${delArm === p.id ? "確定取消這筆？" : "取消收款"}</button>`).join("");
+      else if (pd.length) act = "";
       else act = `<button type="button" data-rtcopy="${E(u.id)}">複製催繳</button><button type="button" class="primary" data-rtopen="${E(u.id)}">記錄收款</button>`;
     }
     const form = admin && openUid === u.id && !ps.length ? `<div class="rt-form">
@@ -308,10 +372,20 @@ function initRentView(mode, acc){
     return `<div class="rt-row${ps.length ? " paid" : ""}" data-uid="${E(u.id)}">
       <div class="rt-h"><b>${E(u.room)}</b><span>${E(u.tenant)}${E(u.honor || "")}</span>${st}</div>
       <div class="rt-d"><span>${E(shortProp(u.property))}・月租 ${money(u.rent)}</span>${info}</div>
+      ${admin ? pd.map(pendHTML).join("") : ""}
       ${act ? `<div class="rt-a">${act}</div>` : ""}${form}</div>`;
   }
+  // 房客回報的繳費：看截圖後確認或退回
+  function pendHTML(p){
+    return `<div class="rt-pend">
+      ${p.proof ? `<a href="${E(p.proof)}" target="_blank" rel="noopener"><img src="${E(p.proof)}" alt="房客上傳的繳費截圖"></a>` : ""}
+      <div class="rt-pi"><b>房客回報：${E(monthsZh(p.months))}</b><span>${money(p.amount)}　${E(p.method || "")}・${E(zhDate(p.date))}</span>${p.note ? `<small>${E(p.note)}</small>` : ""}<small>送出時間 ${E(String(p.createdAt).slice(0, 16).replace("T", " "))}</small>
+        <div class="rt-a"><button type="button" data-rtrej="${E(p.id)}">退回</button><button type="button" class="primary" data-rtok="${E(p.id)}">確認收到</button></div></div></div>`;
+  }
+  function pendAll(){ return pays.filter(p => p.status === "pending").sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))); }
+  function badge(){ const n = admin ? pendAll().length : 0; tab.innerHTML = "租金" + (n ? `<span class="rt-badge">${n}</span>` : ""); }
   function histHTML(){
-    const l = pays.filter(p => admin || ownIds.includes(p.unitId)).sort((a, b) => String(b.date + b.createdAt).localeCompare(String(a.date + a.createdAt))).slice(0, 30);
+    const l = pays.filter(p => okPay(p) && (admin || ownIds.includes(p.unitId))).sort((a, b) => String(b.date + b.createdAt).localeCompare(String(a.date + a.createdAt))).slice(0, 30);
     return l.length ? l.map(p => `<div class="mt-hrow mt-om"><div class="mt-oh"><span>${E(zhDate(p.date))}</span><span>${E(shortProp(p.property))} ${E(p.room)}</span><span>${E(p.tenant || "")}</span></div>
       <div class="mt-ol">${E(monthsZh(p.months))}　<b class="mt-ok">${money(p.amount)}</b>　${E(p.method || "")}${p.note ? "・" + E(p.note) : ""}</div></div>`).join("") : `<p class="hint">還沒有收款紀錄。</p>`;
   }
@@ -324,6 +398,15 @@ function initRentView(mode, acc){
     const b = e.target.closest("button"); if (!b) return;
     if (b.dataset.mv){ ym = ymAdd(ym, +b.dataset.mv); openUid = null; draw(); return; }
     if (!admin) return;
+    if (b.dataset.rtgo){ ym = b.dataset.rtgo; openUid = null; draw(); const r = view.querySelector(".rt-pend"); if (r) r.scrollIntoView({ block: "center", behavior: "smooth" }); return; }
+    if (b.dataset.rtok){ b.disabled = true;
+      try{ const p = pays.find(x => x.id === b.dataset.rtok), u = units.find(x => x.id === p.unitId) || {};
+        await window.__fb.setDoc("rentPays/" + p.id, { status: "ok", confirmedAt: nowISO(), property: p.property || u.property || "", room: u.room || p.room }, true); toast("已確認收款，房客那邊會顯示「已確認收款」"); }
+      catch(_){ b.disabled = false; toast("沒有成功，請再試一次"); } return; }
+    if (b.dataset.rtrej){ const why = prompt("退回原因（房客會看到，可留空）", "金額或期數不符，請確認後重新送出");
+      if (why === null) return; b.disabled = true;
+      try{ await window.__fb.setDoc("rentPays/" + b.dataset.rtrej, { status: "rejected", rejectNote: why.trim(), rejectedAt: nowISO() }, true); toast("已退回"); }
+      catch(_){ b.disabled = false; toast("沒有成功，請再試一次"); } return; }
     if (b.dataset.rtopen){ openUid = b.dataset.rtopen; draw(); const i = view.querySelector('.rt-form [data-k="amount"]'); if (i) i.scrollIntoView({ block: "center" }); return; }
     if (b.dataset.rtcancel){ openUid = null; draw(); return; }
     if (b.dataset.rtcopy){
@@ -342,7 +425,7 @@ function initRentView(mode, acc){
       b.disabled = true;
       try{
         await window.__fb.addDoc("rentPays", { unitId: u.id, property: u.property, room: u.room, tenant: u.tenant + (u.honor || ""), months, month: months[0],
-          amount, date: g("date"), method: g("method"), note: g("note"), shareTenant: true, createdAt: nowISO() });
+          amount, date: g("date"), method: g("method"), note: g("note"), status: "ok", shareTenant: true, createdAt: nowISO() });
         openUid = null; toast(`已記錄 ${u.room} ${monthsZh(months)} 租金`);
       }catch(_){ b.disabled = false; toast("沒有存到，請再試一次"); }
       return;
@@ -359,11 +442,12 @@ function initRentView(mode, acc){
     const nm = x => String(x || "").replace(/\s/g, "");
     let shareTimer = null;
     const syncShare = () => { clearTimeout(shareTimer); shareTimer = setTimeout(() => {
-      pays.forEach(p => { const u = units.find(x => x.id === p.unitId);
+      pays.forEach(p => { if (!p.property){ const u0 = units.find(x => x.id === p.unitId); if (u0) window.__fb.setDoc("rentPays/" + p.id, { property: u0.property }, true).catch(() => {}); }
+        const u = units.find(x => x.id === p.unitId);
         const want = !!(u && u.tenant && nm(p.tenant).startsWith(nm(u.tenant)));
         if (!!p.shareTenant !== want) window.__fb.setDoc("rentPays/" + p.id, { shareTenant: want }, true).catch(() => {}); });
     }, 1500); };
-    window.__fb.watch("rentPays", l => { pays = l; syncShare(); draw(); });
+    window.__fb.watch("rentPays", l => { pays = l; syncShare(); badge(); draw(); });
     afterRender(syncShare);
   } else {
     const parts = [];
@@ -608,6 +692,11 @@ function initAdmin(){
     accList.filter(a => a.role === "owner" && (a.ownerNames || a.ownerName)).forEach(a => {
       const ids = namesUnitIds(a.ownerNames || [a.ownerName]);
       if (!same(ids, [...(a.unitIds || [])].sort())) window.__fb.setDoc("access/" + a.id, { unitIds: ids }, true).catch(() => {});
+    });
+    // 房客帳號附上月租與繳租日（房客回報繳租時自動帶入金額）
+    accList.filter(a => a.role === "tenant").forEach(a => {
+      const rents = {}; (a.unitIds || []).forEach(id => { const u = units.find(x => x.id === id); if (u) rents[id] = { rent: +u.rent || 0, payDay: u.payDay || "" }; });
+      if (!same(rents, a.rents || {})) window.__fb.setDoc("access/" + a.id, { rents }, true).catch(() => {});
     });
   }
 

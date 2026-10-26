@@ -174,3 +174,24 @@ body.role-owner .owners{display:none}
 .rt-form small{font-size:12px;color:var(--muted,#777)}
 .rt-form input,.rt-form select{font:inherit;font-size:16px;padding:8px 10px;border-radius:10px;border:1px solid var(--line,#ccc);background:var(--bg,#fafafa);color:var(--fg,#111);width:100%;box-sizing:border-box}
 .rt-fa{display:flex;justify-content:flex-end;gap:8px}
+
+/* 房客回報繳租 */
+.tr-months{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:6px}
+.tr-months label{display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid var(--line,#ddd);border-radius:10px;font-size:14px;cursor:pointer}
+.tr-months label input{width:auto;margin:0}
+.tr-months label.dis{opacity:.55;cursor:default}
+.tr-months small{display:block;font-size:11.5px;color:var(--ok,#1e7a4c)}
+.tr-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.tr-h3{margin:16px 0 4px;font-size:16px}
+.tp-st.st-rejected{background:var(--bad-soft,#fde7e5);color:var(--bad,#b3261e)}
+.rt-st.pend{background:var(--accent-soft,#e3efeb);color:var(--accent,#2b5d52);font-weight:700}
+.rt-pend{display:flex;gap:10px;padding:10px;border-radius:10px;background:var(--accent-soft,#e3efeb)}
+.rt-pend img{width:84px;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--line,#ddd)}
+.rt-pi{flex:1;display:flex;flex-direction:column;gap:3px;font-size:14px}
+.rt-pi small{font-size:12px;color:var(--muted,#777)}
+.rt-alert{padding:12px 14px;border-radius:12px;background:var(--warn-soft,#fbefd5);color:var(--warn,#8a5a00);display:flex;flex-direction:column;gap:8px;font-size:14px}
+.rt-badge{display:inline-block;min-width:18px;height:18px;line-height:18px;margin-left:4px;padding:0 5px;border-radius:999px;background:var(--bad,#b3261e);color:#fff;font-size:11.5px;font-weight:700;text-align:center;vertical-align:2px}
+.tr-grid .tp-f{min-width:0}
+.tr-grid input,.tr-grid select{width:100%;box-sizing:border-box;min-width:0}
+#vRent{position:relative}
+.rt-badge{position:absolute;top:2px;right:2px;margin:0}
