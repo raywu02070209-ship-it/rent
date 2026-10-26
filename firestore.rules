@@ -17,19 +17,12 @@ service cloud.firestore {
     // 代理人資訊、合約字體（產生合約 PDF 用）
     match /settings/{id} { allow get: if (hasRole('tenant') || hasRole('owner')) && id in ['agent', 'doc']; }
 
-    // 屋主：自己名下房號（不含私人備註的副本）、已簽合約副本、紀錄、電表度數、租金收款（房客只看目前自己的）
+    // 屋主：自己名下房號（不含私人備註的副本）、已簽合約副本、紀錄、電表度數（房客只看目前自己的電費）
     match /ownerUnits/{unitId} { allow get: if hasRole('owner') && myUnit(unitId); }
     match /ownerContracts/{id} { allow read: if hasRole('owner') && myUnit(resource.data.unitId); }
     match /records/{id} { allow read: if hasRole('owner') && myUnit(resource.data.unitId); }
     match /meterReads/{id} { allow read: if (hasRole('owner') && myUnit(resource.data.unitId))
       || (hasRole('tenant') && myUnit(resource.data.unitId) && resource.data.shareTenant == true); }
-    match /rentPays/{id} {
-      allow read: if (hasRole('owner') && myUnit(resource.data.unitId))
-        || (hasRole('tenant') && myUnit(resource.data.unitId) && (resource.data.shareTenant == true || resource.data.uid == request.auth.uid));
-      // 房客回報繳租：只能新增自己的、狀態必須是待確認
-      allow create: if hasRole('tenant') && request.resource.data.uid == request.auth.uid
-        && myUnit(request.resource.data.unitId) && request.resource.data.status == 'pending';
-    }
 
     // 房客：報修申請（只能新增、看自己的）
     match /requests/{id} {
