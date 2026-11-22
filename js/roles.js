@@ -517,6 +517,21 @@ function initAdmin(){
     });
   }
 
+  // ---- 物件改地址：電表紀錄、房客帳號上的房號名稱、台電帳單設定一起改 ----
+  window.__afterPropRename = async (oldName, newName) => {
+    const reads = await window.__fb.list("meterReads", [["property", "==", oldName]]).catch(() => []);
+    for (const r of reads) await window.__fb.setDoc("meterReads/" + r.id, { property: newName }, true);
+    for (const a of accList.filter(a => a.role === "tenant")){
+      const rooms = { ...(a.rooms || {}) }; let changed = false;
+      (a.unitIds || []).forEach(id => { const u = units.find(x => x.id === id); if (u && (u.property === newName || u.property === oldName)){ rooms[id] = unitLabel({ ...u, property: newName }); changed = true; } });
+      if (changed) await window.__fb.setDoc("access/" + a.id, { rooms }, true);
+    }
+    try{
+      const m = await window.__fb.get("settings/meter");
+      if (m && m.bills && m.bills[oldName]){ const bills = { ...m.bills, [newName]: m.bills[oldName] }; delete bills[oldName]; await window.__fb.setDoc("settings/meter", { ...m, bills }, false); }
+    }catch(_){}
+  };
+
   // ---- 房號編輯時一併開通／更新房客帳號 ----
   window.__unitAccEmails = uid => accList.filter(a => a.role === "tenant" && (a.unitIds || []).includes(uid)).map(a => a.email || a.id);
   window.__afterUnitSave = async (uid, d) => {

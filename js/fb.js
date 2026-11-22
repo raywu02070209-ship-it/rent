@@ -272,4 +272,6 @@ window.__fb = {
   watch: (col, cb, filters) => onSnapshot(filters ? query(collection(fs, col), ...filters.map(f => where(...f))) : collection(fs, col),
     s => cb(s.docs.map(d => ({ id: d.id, ...d.data() }))), () => cb([])),
   upload,
+  list: (col, filters) => getDocs(filters ? query(collection(fs, col), ...filters.map(f => where(...f))) : collection(fs, col)).then(s => s.docs.map(d => ({ id: d.id, ...d.data() }))),
+  get: path => getDoc(doc(fs, path)).then(d => d.exists() ? d.data() : null),
 };

@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="css/roles.css?v=20261122j">
+<link rel="stylesheet" href="css/roles.css?v=20261122l">
 <title>套房管理系統</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;700;800&family=IBM+Plex+Mono:wght@500&display=swap">
@@ -454,6 +454,15 @@ fieldset.grp .full{grid-column:1/-1}
 .field .oc-opt select,.field .oc-opt input{font:inherit;font-size:15px;padding:5px 8px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);width:auto}
 .field .oc-opt input{width:6em}
 .doc .seal.sm{height:40px;max-width:60px;margin:-10px 2px -10px 4px}
+.pren{display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:12px;background:var(--surface-2,rgba(0,0,0,.03));margin:6px 0 10px}
+.pren-l{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.pren-l input{font:inherit;font-size:16px;padding:9px 11px;height:auto;width:100%;box-sizing:border-box;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
+.pren-c{display:flex;gap:8px;align-items:flex-start;font-size:13.5px}
+.pren-c input{width:18px;height:18px;flex:0 0 auto;margin:2px 0 0}
+.pren-a button{font:inherit;padding:8px 16px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
+.pren-a button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink,#fff);font-weight:700}
+.pren-a{display:flex;gap:8px}
+.pren-h{font-size:12px;color:var(--muted)}
 .sealown{padding-bottom:10px;margin-bottom:10px;border-bottom:1px dashed var(--line)}
 .sealown .sealco{display:flex;align-items:center;gap:8px;font-size:14px;margin:6px 0 8px 4px}
 .sealown .sealco input{width:auto}
@@ -1041,7 +1050,7 @@ const money = n => "$" + Math.round(n || 0).toLocaleString("zh-TW");
 const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset()*6e4).toISOString().slice(0,10); };
 
 let db = null, col = null, ucol = null, records = [], units = [], loaded = false, uLoaded = false, canWrite = true;
-let pcol = null, properties = [], pLoaded = false, editingOwners = null;
+let pcol = null, properties = [], pLoaded = false, editingOwners = null, renamingProp = null;
 let view = "records", uQuery = "", uEditing = null, uConfirmDel = false;
 let filter = {type:"all", prop:"", status:"open", bill:"", q:""};
 let editing = null, confirmDel = false;
@@ -1213,7 +1222,11 @@ function renderUnits(){
   list.forEach(u => (groups[u.property] ||= []).push(u));
   const openCount = u => records.filter(r => r.status!=="done" && (r.unitId===u.id || unitKey(r.property,r.room)===unitKey(u.property,u.room))).length;
   $("unitList").innerHTML = Object.entries(groups).map(([p,us]) => `
-    <section class="pgroup"><h3><button type="button" class="tog" data-tog="p:${esc(p)}" aria-expanded="${isOpen("p:"+p)}"><span class="chev" aria-hidden="true"></span>${esc(p)}</button><small>${us.length} 間・出租中 ${us.filter(u=>u.tenant).length}</small>${canWrite?`<span class="gact"><button type="button" data-addroom="${esc(p)}">＋ 新增房號</button>${!us.length && !records.some(r=>r.property===p) && properties.some(x=>x.name===p)?`<button type="button" class="danger" data-rmprop="${esc(p)}">移除物件</button>`:""}</span>`:""}</h3>
+    <section class="pgroup"><h3><button type="button" class="tog" data-tog="p:${esc(p)}" aria-expanded="${isOpen("p:"+p)}"><span class="chev" aria-hidden="true"></span>${esc(p)}</button><small>${us.length} 間・出租中 ${us.filter(u=>u.tenant).length}</small>${canWrite?`<span class="gact"><button type="button" data-addroom="${esc(p)}">＋ 新增房號</button><button type="button" data-renprop="${esc(p)}">修改地址</button>${!us.length && !records.some(r=>r.property===p) && properties.some(x=>x.name===p)?`<button type="button" class="danger" data-rmprop="${esc(p)}">移除物件</button>`:""}</span>`:""}</h3>
+    ${renamingProp===p ? `<form class="pren" data-renform="${esc(p)}"><label class="pren-l">物件地址<input id="propRenInput" value="${esc(p)}" aria-label="物件地址"></label>
+      ${contracts.some(c=>c.property===p && c.status==="signed") ? `<label class="pren-c"><input type="checkbox" id="propRenSigned"> 已簽好的合約也一起改（只是修正錯字時再勾；地址真的不同請不要勾）</label>` : ""}
+      <span class="pren-a"><button type="submit" class="primary">儲存</button><button type="button" data-cancelren="1">取消</button></span>
+      <small class="pren-h">會一併更新這個物件的房號、合約草稿、紀錄、電表紀錄與屋主資料。</small></form>` : ""}
     ${!isOpen("p:"+p) ? "" : `
     ${editingOwners===p ? `<form class="oedit" data-ownersform="${esc(p)}"><input id="ownersInput" value="${esc(ownersOf(p).join("、"))}" placeholder="屋主姓名，多位用「、」分開" aria-label="屋主姓名"><button type="submit" class="primary">儲存</button><button type="button" data-cancelowners="1">取消</button></form>`
       : `<div class="owners">屋主：${ownersOf(p).length ? ownersOf(p).map(o=>`<span class="chip">${esc(o)}</span>`).join("") : "尚未登記"}${canWrite && properties.some(x=>x.name===p)?`<button type="button" data-editowners="${esc(p)}">${ownersOf(p).length?"編輯":"＋ 登記屋主"}</button>`:""}</div>`}
@@ -1248,6 +1261,9 @@ $("unitList").addEventListener("click", async e => {
   if (ar){ openUnit(); setPropSel("u_propertySel","u_property", ar.dataset.addroom); $("u_owner").value=""; fillOwnerSel(); $("u_room").focus(); return; }
   const eo = e.target.closest("button[data-editowners]");
   if (eo){ editingOwners = eo.dataset.editowners; renderUnits(); const i = document.getElementById("ownersInput"); if (i) i.focus(); return; }
+  const rn = e.target.closest("button[data-renprop]");
+  if (rn){ renamingProp = rn.dataset.renprop; renderUnits(); const i = document.getElementById("propRenInput"); if (i){ i.focus(); i.select(); } return; }
+  if (e.target.closest("button[data-cancelren]")){ renamingProp = null; renderUnits(); return; }
   const co = e.target.closest("button[data-cancelowners]");
   if (co){ editingOwners = null; renderUnits(); return; }
   const rp = e.target.closest("button[data-rmprop]");
@@ -1268,6 +1284,8 @@ $("unitList").addEventListener("click", async e => {
   else if (b.dataset.act==="hist") { setView("records"); filter.status=""; $("fStatus").value=""; filter.prop=u.property; filter.q=u.room; $("fSearch").value=u.room; render(); $("fProp").value=u.property; }
 });
 $("unitList").addEventListener("submit", async e => {
+  const rf = e.target.closest("form[data-renform]");
+  if (rf){ e.preventDefault(); await renameProperty(rf.dataset.renform, $("propRenInput").value.trim(), !!($("propRenSigned") && $("propRenSigned").checked), rf.querySelector("button[type=submit]")); return; }
   const f = e.target.closest("form[data-ownersform]"); if (!f) return;
   e.preventDefault();
   const pd = properties.find(x=>x.name===f.dataset.ownersform); if (!pd) return;
@@ -1275,6 +1293,27 @@ $("unitList").addEventListener("submit", async e => {
   try{ await pcol.doc(pd.id).update({owners}); editingOwners = null; toast("已更新屋主"); renderUnits(); }catch(_){ toast("屋主沒有存到，請再試一次"); }
 });
 $("uSearch").oninput = e => { uQuery = e.target.value; renderUnits(); };
+
+// 修改物件地址：連同房號、合約、紀錄、電表紀錄一起改，避免資料對不起來
+async function renameProperty(oldName, newName, withSigned, btn){
+  if (!newName) return toast("請輸入地址");
+  if (newName === oldName){ renamingProp = null; renderUnits(); return; }
+  if (allProps().includes(newName)) return toast("已經有同名的物件，請換一個地址");
+  if (btn){ btn.disabled = true; btn.textContent = "更新中…"; }
+  try{
+    const pd = properties.find(x => x.name === oldName);
+    if (pd) await pcol.doc(pd.id).update({ name: newName });
+    else await pcol.add({ name: newName, createdAt: new Date().toISOString() });
+    for (const u of units.filter(x => x.property === oldName)) await ucol.doc(u.id).update({ property: newName });
+    for (const c of contracts.filter(x => x.property === oldName && (withSigned || x.status !== "signed"))) await ccol.doc(c.id).update({ property: newName });
+    for (const r of records.filter(x => x.property === oldName)) await col.doc(r.id).update({ property: newName });
+    if (window.__afterPropRename) await window.__afterPropRename(oldName, newName);
+    renamingProp = null;
+    try{ if (openSet && openSet.has("p:"+oldName)) openSet.add("p:"+newName); }catch(_){}
+    if (filter.prop === oldName) filter.prop = newName;
+    toast("已修改物件地址"); renderUnits();
+  }catch(err){ console.warn(err); toast("有部分資料沒改到，請再按一次儲存"); if (btn){ btn.disabled = false; btn.textContent = "儲存"; } }
+}
 
 function setView(v){
   view = v;
@@ -3321,9 +3360,9 @@ async function runBackup(withFiles){
 document.getElementById("bkFull").onclick = () => runBackup(true);
 document.getElementById("bkData").onclick = () => runBackup(false);
 </script>
-<script src="js/roles.js?v=20261122j"></script>
+<script src="js/roles.js?v=20261122l"></script>
 <script type="module">
-import "./js/fb.js?v=20261122j";
+import "./js/fb.js?v=20261122l";
 document.getElementById("authLoading").hidden = true;
 </script>
 </body>
