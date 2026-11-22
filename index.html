@@ -10,10 +10,10 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="css/roles.css?v=20261122i">
+<link rel="stylesheet" href="css/roles.css?v=20261122j">
 <title>套房管理系統</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;700;800&family=IBM+Plex+Mono:wght@500&family=LXGW+WenKai+TC:wght@400;700&family=Huninn&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;700;800&family=IBM+Plex+Mono:wght@500&display=swap">
 
 <style>
 html,body{margin:0}
@@ -1730,6 +1730,17 @@ const DOC_FONTS = {
   yuan: '"Huninn","Noto Sans TC","PingFang TC",sans-serif'
 };
 const FONT_NAME = {ming:'Noto Serif TC', kai:'LXGW WenKai TC', hei:'Noto Sans TC', yuan:'Huninn'};
+// 楷體、圓體只有合約用到，選到時才下載（網站一打開不用載入）
+const DOC_FONT_CSS = {kai:"family=LXGW+WenKai+TC:wght@400;700", yuan:"family=Huninn"};
+function ensureDocFont(f){
+  const q = DOC_FONT_CSS[f]; if (!q) return Promise.resolve();
+  let l = document.querySelector(`link[data-docfont="${f}"]`);
+  if (l) return l._ready || Promise.resolve();
+  l = document.createElement("link"); l.rel = "stylesheet"; l.dataset.docfont = f;
+  l.href = `https://fonts.googleapis.com/css2?${q}&display=swap`;
+  l._ready = new Promise(r => { l.onload = l.onerror = () => r(); setTimeout(r, 5000); });
+  document.head.appendChild(l); return l._ready;
+}
 let docCfg = {font:"ming"};
 const SEAL = id => id ? `<img class="seal" src="${esc(BL(id))}" alt="印章">` : "";
 function currentSeals(c){ const oi = ownerInfoOf(c.property, c.owner); return { owner: oi.sealId || "", owner2: oi.sealId2 || "", ownerRep: oi.rep || "", agent: agentCfg.sealId || "" }; }
@@ -2760,7 +2771,7 @@ $("sealList").addEventListener("click", async e => {
     renderSeals(); }
 });
 $("docFont").addEventListener("change", async e => {
-  docCfg = {...docCfg, font: e.target.value};
+  docCfg = {...docCfg, font: e.target.value}; ensureDocFont(docCfg.font);
   try{ await db.doc("settings/doc").set(docCfg); toast("已更換合約字體"); }catch(_){ toast("字體設定沒有存到，請再試一次"); }
 });
 $("sealBtn").onclick = () => { if (!canWrite) return; sealConfirm = null; $("sealErr").hidden = true; $("sScrim").hidden = false; renderSeals(); };
@@ -2771,6 +2782,7 @@ $("sScrim").addEventListener("click", e => { if (e.target.id==="sScrim") $("sScr
 let docShowing = null;
 function urlsFor(c){ const s = c.sigs||{}; const m = {}; ["tenant","tenant2","agent","guarantor"].forEach(k => { if (s[k]) m[k] = BL(s[k]); }); return m; }
 function openDoc(c, preview){
+  ensureDocFont(docCfg.font);
   docShowing = c;
   $("docTitle").textContent = preview ? `預覽　${c.room}（草稿）` : `${c.room}　${tenantNames(c)}　租賃契約`;
   $("docView").innerHTML = docHTML(c, {urls: urlsFor(c), ids: !preview, audit: !preview});
@@ -2793,10 +2805,10 @@ async function contractPDF(c, btn, opts){
     await loadScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
     await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
     await Promise.all([...host.querySelectorAll("img")].map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; })));
-    try{ const fn = FONT_NAME[docCfg.font]||FONT_NAME.ming; await Promise.all([document.fonts.load(`400 16px "${fn}"`, "租賃契約書"), document.fonts.load(`700 16px "${fn}"`, "租賃契約書")]); }catch(_){}
+    try{ await ensureDocFont(docCfg.font); const fn = FONT_NAME[docCfg.font]||FONT_NAME.ming; await Promise.all([document.fonts.load(`400 16px "${fn}"`, "租賃契約書"), document.fonts.load(`700 16px "${fn}"`, "租賃契約書")]); }catch(_){}
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({unit:"mm", format:"a4", orientation:"portrait"});
+    const pdf = new jsPDF({unit:"mm", format:"a4", orientation:"portrait", compress:true});
     const ML = 14, MT = 17, CW = 182, CH = 262, PXMM = 794 / CW, H = CH * PXMM;   // 頁面可用高度（px）
     let first = true;
     const ATOM_SEL = "h1,h2,p,li,tr,.sigline,.spot,.note,.date,img,.keep";
@@ -2804,7 +2816,7 @@ async function contractPDF(c, btn, opts){
     const secs = [...host.querySelectorAll(".pg")];
     for (const [si, sec] of secs.entries()){
       const sr = sec.getBoundingClientRect(); let total = sr.height, mC = null;
-      const scale = Math.max(1, Math.min(2, Math.sqrt(14e6 / (sr.width * total))));
+      const scale = Math.max(1, Math.min(1.7, Math.sqrt(14e6 / (sr.width * total))));
       const canvas = await window.html2canvas(sec, {scale, useCORS:true, backgroundColor:"#ffffff", logging:false, scrollX:0, scrollY:-window.scrollY,
         onclone: d => { const h = d.getElementById("pdfhost"); if (h){ h.style.opacity = "1"; const cs = h.querySelectorAll(".pg")[si]; if (cs) try{ mC = measure(cs); }catch(_){} } }});
       // 以實際被截圖的版面（複製版）量測，避免手機自動放大文字造成位置不一致
@@ -2825,7 +2837,7 @@ async function contractPDF(c, btn, opts){
           pctx.font = `700 ${Math.round(fs/3.2)}px "Noto Sans TC",sans-serif`; pctx.fillText("僅供審閱，非正式契約", 0, fs*0.55);
           pctx.restore();
         }
-        pdf.addImage(pc.toDataURL("image/jpeg", 0.92), "JPEG", ML + (CW - w) / 2, MT, w, hm);
+        pdf.addImage(pc.toDataURL("image/jpeg", 0.75), "JPEG", ML + (CW - w) / 2, MT, w, hm);
       };
       // 立契約書人等「整頁」區塊：略超出時縮小放進同一頁
       if (sec.classList.contains("fit") && total <= H * 1.45){ addSlice(0, total); continue; }
@@ -3267,7 +3279,7 @@ render();
   pcol = db.collection("properties");
   ccol = db.collection("contracts");
   ccol.onSnapshot(snap => { contracts = snap.docs.map(d => ({id:d.id, ...d.data()})); cLoaded = true; render(); }, () => { cLoaded = true; render(); });
-  db.doc("settings/doc").onSnapshot(d => { docCfg = {font:"ming", ...(d.exists ? d.data() : {})}; $("docFont").value = docCfg.font; if (!$("docWrap").hidden && docShowing) openDoc(docShowing, docShowing.status!=="signed"); }, () => {});
+  db.doc("settings/doc").onSnapshot(d => { docCfg = {font:"ming", ...(d.exists ? d.data() : {})}; ensureDocFont(docCfg.font); $("docFont").value = docCfg.font; if (!$("docWrap").hidden && docShowing) openDoc(docShowing, docShowing.status!=="signed"); }, () => {});
   db.doc("settings/facility").onSnapshot(d => { facCustom = (d.exists && d.data().custom) || []; if (!$("cScrim").hidden){ facRows = readFac(); drawFac(); } }, () => {});
   db.doc("settings/tenantForm").onSnapshot(d => { tfCfg = d.exists ? d.data() : {}; }, () => {});
   db.doc("settings/agent").onSnapshot(d => { agentCfg = d.exists ? d.data() : {}; renderSeals(); if (S && S.step===3 && !$("signWrap").hidden){ const ck = $("finalAck") && $("finalAck").checked; drawStep(); if (ck) $("finalAck").checked = true; } }, () => {});
@@ -3309,9 +3321,9 @@ async function runBackup(withFiles){
 document.getElementById("bkFull").onclick = () => runBackup(true);
 document.getElementById("bkData").onclick = () => runBackup(false);
 </script>
-<script src="js/roles.js?v=20261122i"></script>
+<script src="js/roles.js?v=20261122j"></script>
 <script type="module">
-import "./js/fb.js?v=20261122i";
+import "./js/fb.js?v=20261122j";
 document.getElementById("authLoading").hidden = true;
 </script>
 </body>

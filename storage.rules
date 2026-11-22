@@ -3,12 +3,18 @@ service firebase.storage {
   match /b/{bucket}/o {
     function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
     function isAdmin() { return signedIn() && request.auth.token.email == 'raywu02070209@gmail.com'; }
+    // 只有管理員在「帳號權限」開通過的房客才算（讀 Firestore 的 access 資料）
+    function isTenant() {
+      return signedIn()
+        && firestore.exists(/databases/(default)/documents/access/$(request.auth.token.email))
+        && firestore.get(/databases/(default)/documents/access/$(request.auth.token.email)).data.role == 'tenant';
+    }
     match /{allPaths=**} { allow read, write: if isAdmin(); }
 
     // 房客上傳報修照片、簽名、證件（只能放進自己的資料夾，10MB 以內；可讀自己上傳的檔案，不能刪除）
     match /t/{uid}/{file} {
       allow read: if signedIn() && request.auth.uid == uid;
-      allow create: if signedIn() && request.auth.uid == uid
+      allow create: if isTenant() && request.auth.uid == uid
         && request.resource.size < 10 * 1024 * 1024
         && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
     }
