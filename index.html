@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="css/roles.css?v=20261026c">
+<link rel="stylesheet" href="css/roles.css?v=20261122a">
 <title>套房管理系統</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;700;800&family=IBM+Plex+Mono:wght@500&family=LXGW+WenKai+TC:wght@400;700&family=Huninn&display=swap">
@@ -784,6 +784,7 @@ fieldset.grp .full{grid-column:1/-1}
       <div class="field full"><span>電費</span>
         <div class="checks">
           <label><input type="radio" name="c_elec" value="meter" checked> 獨立分錶，每度 <input id="c_elecRate" type="number" min="0" step="0.1" value="5" style="width:4.5em;padding:3px 6px"> 元</label>
+          <label><input type="radio" name="c_elec" value="avg"> 獨立分錶，依台電當期帳單平均每度電價計算</label>
           <label><input type="radio" name="c_elec" value="self"> 獨立門牌依帳單自行繳納</label>
         </div></div>
       <div class="field full"><span>電錶</span>
@@ -1778,7 +1779,7 @@ function docHTML(c, ctx){
   <ol>
   <li>每月租金 ${fv(num(c.rent))} 元整，租金包含${INCLUDES.map(x=>Bx(inc.includes(x))+x).join("")}${Bx(!!c.includesOther)}其他${fv(c.includesOther)}。每期應繳納 ${fv(c.payMonths)} 個月租金，並於每月 ${fv(c.payDay)} 號前匯入指定帳號繳付。不得藉由任何理由推延或拒絕，出租人於租賃期間亦不得任意要求調漲租金。</li>
   <li>押金由租賃雙方約定為兩個月租金，金額為 ${fv(num(c.deposit))} 元整。承租人應於簽訂本契約之同時給付。租約期滿返還房屋時，經甲方確認乙方戶籍已遷出，且無應賠償違約金、無欠繳租金或其他相關費用、或無其他因乙方違約應沒收擔保金（押金）之情形後，無息退還（於退租點交日隔天起算工作天 10 天完成退款，如遇國定假日順延）。</li>
-  <li>電費${Bx(c.elecMode!=="self")}依該獨立分錶每度收 ${fv(c.elecMode!=="self"?c.elecRate:"")} 元，起租電錶度數：${c.elecMode!=="self" && c.meterMode==="split" ? `110V 電錶 ${fv(c.elec110)} 度、220V 電錶 ${fv(c.elec220)} 度（兩只電錶之用電度數合併計算電費）` : `${fv(c.elecMode!=="self"?c.elecStart:"")} 度`}，每季結算乙次，每年 3 月 1 日、6 月 1 日、9 月 1 日、12 月 1 日為結算日。結算日前五日為抄錶日。${Bx(c.elecMode==="self")}獨立門牌依帳單自行繳納。</li>
+  <li>電費${Bx(c.elecMode!=="self")}依該獨立分錶計費：${Bx(c.elecMode==="meter"||(!c.elecMode&&c.elecRate))}每度收 ${fv(c.elecMode==="meter"||(!c.elecMode&&c.elecRate)?c.elecRate:"")} 元　${Bx(c.elecMode==="avg")}依台電當期電費帳單之平均每度電價計算，起租電錶度數：${c.elecMode!=="self" && c.meterMode==="split" ? `110V 電錶 ${fv(c.elec110)} 度、220V 電錶 ${fv(c.elec220)} 度（兩只電錶之用電度數合併計算電費）` : `${fv(c.elecMode!=="self"?c.elecStart:"")} 度`}，每季結算乙次，每年 3 月 1 日、6 月 1 日、9 月 1 日、12 月 1 日為結算日。結算日前五日為抄錶日。${Bx(c.elecMode==="self")}獨立門牌依帳單自行繳納。</li>
   <li>乙方使用房屋之其他相關負擔費用如下：${OTHER_COSTS.map(x=>Bx(oc.includes(x))+x).join("、")}</li>
   <li>出入設備：甲方交付乙方：${keys.length ? keys.map(k=>{ const ex = []; if (k.nos) ex.push(`編號：${fv(k.nos)}`); if (+k.dep) ex.push(`每顆押金 ${fv(num(k.dep))} 元，共 ${fv(num((+k.dep)*(+k.qty||0)))} 元`); return `${esc(k.name)} ${fv(k.qty)} ${esc(k.unit)}${ex.length?`（${ex.join("；")}）`:""}`; }).join("、") : "無"}。${keyDepTotal(c) ? `磁扣押金合計 ${fv(num(keyDepTotal(c)))} 元，於簽約時與押金一併給付，於退租點交如數返還磁扣時無息退還；磁扣遺失或損壞者，該顆磁扣押金不予退還，乙方如需補發，應另行繳納新磁扣之押金。` : ""}</li>
   <li>乙方需於租期屆滿一個月前告知甲方是否續約並於約期內完成續約手續，未於一個月前告知或未完成續約手續則視同乙方不續約。</li>
@@ -2085,7 +2086,7 @@ function setContractForm(c){
   document.querySelector(`input[name=c_meter][value="${c.meterMode==="split"?"split":"single"}"]`).checked = true; syncMeter();
   INCLUDES.forEach((x,i)=> $("inc_"+i).checked = (c.includes||[]).includes(x));
   OTHER_COSTS.forEach((x,i)=> $("oc_"+i).checked = (c.otherCosts||[]).includes(x));
-  document.querySelector(`input[name=c_elec][value="${c.elecMode==="self"?"self":"meter"}"]`).checked = true;
+  document.querySelector(`input[name=c_elec][value="${c.elecMode==="self"?"self":c.elecMode==="avg"?"avg":"meter"}"]`).checked = true;
   keyRows = c.keys || c.fobs!==undefined || c.mainKeys!==undefined ? keysOf(c) : [keyRow("1 樓門禁","磁扣","1",""), keyRow("房門","鑰匙","1","")];
   drawKeys(); if ($("c_keyCustom")) $("c_keyCustom").remove();
   $("c_lessorTerminate").checked = !!c.lessorTerminate; $("c_tenantTerminate").checked = !!c.tenantTerminate;
@@ -3233,9 +3234,9 @@ function confirmMove(){ // 已經有資料時，要按第二次才會覆蓋
   moveArmed = true; document.getElementById("mvStatus").textContent = "這裡已經有資料了。同一筆資料會被搬家檔的內容覆蓋，確定要搬請再選一次檔案。"; return false;
 }
 </script>
-<script src="js/roles.js?v=20261026c"></script>
+<script src="js/roles.js?v=20261122a"></script>
 <script type="module">
-import "./js/fb.js?v=20261026c";
+import "./js/fb.js?v=20261122a";
 document.getElementById("authLoading").hidden = true;
 </script>
 </body>

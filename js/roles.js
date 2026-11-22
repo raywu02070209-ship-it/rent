@@ -239,8 +239,9 @@ function initMeter(){
   function setup(u){
     const c = latestContract(u), m = u.meter || {};
     const mode = (c && c.elecMode === "self") || m.mode === "self" ? "self" : ((c && c.meterMode === "split") || m.mode === "split" ? "split" : "single");
-    const rate = num(c && c.elecRate) ?? num(meterCfg.rate) ?? 5;
-    return { mode, rate };
+    const avg = !!(c && c.elecMode === "avg");
+    const rate = avg ? (num(meterCfg.avgRate) ?? "") : (num(c && c.elecRate) ?? num(meterCfg.rate) ?? 5);
+    return { mode, rate, avg };
   }
   const unitReads = u => reads.filter(r => r.unitId === u.id).sort((a, b) => String(b.date + b.createdAt).localeCompare(String(a.date + a.createdAt)));
   function prevOf(u, mode){
@@ -290,7 +291,7 @@ function initMeter(){
     view.querySelectorAll(".mt-row[data-uid]").forEach(updRow); updSum();
   }
   function rowHTML(u){
-    const { mode, rate } = setup(u);
+    const { mode, rate, avg } = setup(u);
     const tenant = u.tenant ? `${E(u.tenant)}${E(u.honor || "")}` : `<span class="mt-vac">空房</span>`;
     if (mode === "self") return `<div class="mt-row mt-self"><div class="mt-h"><b>${E(u.room)}</b>${tenant}</div><small>台電獨立電表，房客自行繳費，不需抄表</small></div>`;
     const pv = prevOf(u, mode), keys = mode === "split" ? [["r110", "110V"], ["r220", "220V"]] : [["r", ""]];
@@ -302,7 +303,7 @@ function initMeter(){
         <span class="mt-arrow">→</span>
         <label><small>本次</small><input data-cur="${k}" inputmode="decimal" placeholder="輸入本次度數"></label>
       </div>`).join("")}
-      <div class="mt-res"><small>${E(pv.from || "沒有上次紀錄，請填上次度數")}</small><span class="mt-rt">每度 <input data-rate inputmode="decimal" value="${E(rate)}"> 元</span><b class="mt-amt"></b></div>
+      <div class="mt-res"><small>${E(pv.from || "沒有上次紀錄，請填上次度數")}</small><span class="mt-rt">${avg ? "台電均價" : "每度"} <input data-rate inputmode="decimal" value="${E(rate)}"${avg ? ' placeholder="帳單均價" data-avg="1"' : ""}> 元</span><b class="mt-amt"></b></div>
     </div>`;
   }
   function rowVals(row){
@@ -339,20 +340,25 @@ function initMeter(){
   async function save(btn){
     const err = m => { $("mtErr").textContent = m; $("mtErr").hidden = !m; };
     const date = $("mtDate").value || today(), list = [];
-    let bad = 0;
+    let bad = 0, noAvg = 0, lastAvg = null;
     view.querySelectorAll(".mt-row[data-uid]").forEach(row => {
       const v = rowVals(row), r = calc(v.mode, v.prev, v.cur, v.rate); if (!r) return;
       if (r.err){ bad++; return; }
+      const isAvg = !!row.querySelector("[data-avg]");
+      if (isAvg && !(v.rate > 0)){ noAvg++; return; }
+      if (isAvg) lastAvg = v.rate;
       const u = units.find(x => x.id === row.dataset.uid);
       list.push({ unitId: u.id, property: u.property, room: u.room, tenant: u.tenant ? u.tenant + (u.honor || "") : "", date, mode: v.mode,
-        prev: v.prev, cur: v.cur, kwh: r.kwh, rate: v.rate, amount: r.amount, paid: false, shareTenant: !!u.tenant, createdAt: new Date().toISOString() });
+        prev: v.prev, cur: v.cur, kwh: r.kwh, rate: v.rate, rateType: row.querySelector("[data-avg]") ? "avg" : "fixed", amount: r.amount, paid: false, shareTenant: !!u.tenant, createdAt: new Date().toISOString() });
     });
+    if (noAvg) return err(`有 ${noAvg} 間是依台電平均電價計算，請先填這期帳單的平均每度電價。`);
     if (bad) return err(`有 ${bad} 間的度數有問題（紅字），請修正後再儲存。`);
     if (!list.length) return err("請至少輸入一間的本次度數。");
     err(""); btn.disabled = true; btn.textContent = "儲存中…";
     try{
       lastSaved = [];
       for (const d of list){ const id = await window.__fb.addDoc("meterReads", d); lastSaved.push({ id, ...d }); }
+      if (lastAvg != null) window.__fb.setDoc("settings/meter", { avgRate: lastAvg }, true).catch(() => {});
       toast(`已儲存 ${list.length} 間的抄表`);
       view.dataset.reset = "1"; view.dataset.date = date; draw(); showDone();
     }catch(_){ err("儲存失敗，請再試一次。"); btn.disabled = false; btn.textContent = "儲存這次抄表"; }
@@ -366,7 +372,7 @@ function initMeter(){
     return `【電費通知】${shortProp(r.property)} ${r.room}${r.tenant ? " " + r.tenant : ""}
 抄表日期：${zhDate(r.date)}
 ${line}
-用電 ${fmtN(r.kwh)} 度 × 每度 ${r.rate} 元 = ${money(r.amount).replace("$", "")} 元`;
+用電 ${fmtN(r.kwh)} 度 × ${r.rateType === "avg" ? "台電平均每度" : "每度"} ${r.rate} 元 = ${money(r.amount).replace("$", "")} 元`;
   };
   async function copyText(t, b){
     let ok = false; try{ await navigator.clipboard.writeText(t); ok = true; }catch(_){}
