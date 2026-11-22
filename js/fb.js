@@ -232,6 +232,35 @@ window.__fbImport = async (file, progress) => {
   }
   return { files: ids.length, docs: writes.length };
 };
+// ---------- 備份：全部資料存成一個檔案（格式與搬家檔相同，日後可用來還原） ----------
+const BACKUP_COLS = ["properties", "units", "contracts", "records", "settings", "access", "requests", "meterReads"];
+const blobToB64 = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(b); });
+window.__fbBackup = async (withFiles, progress) => {
+  const out = { kind: "rental-log-export", source: "套房管理系統", exportedAt: new Date().toISOString(), collections: {}, assets: {} };
+  let docs = 0;
+  for (const c of BACKUP_COLS){
+    progress(`讀取資料：${c}…`);
+    const snap = await getDocs(collection(fs, c));
+    out.collections[c] = snap.docs.map(d => ({ id: d.id, data: d.data() }));
+    docs += snap.size;
+  }
+  let files = 0, failed = 0;
+  if (withFiles){
+    const urls = new Set();
+    const walk = v => { if (typeof v === "string"){ if (/^https:\/\/firebasestorage\.googleapis\.com\//.test(v)) urls.add(v); }
+      else if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === "object") Object.values(v).forEach(walk); };
+    Object.values(out.collections).forEach(l => l.forEach(d => walk(d.data)));
+    const list = [...urls];
+    for (const u of list){
+      progress(`下載照片與檔案 ${files + failed + 1} / ${list.length}`);
+      try{ const r = await fetch(u); if (!r.ok) throw 0; const b = await r.blob();
+        out.assets[u] = { type: b.type || "application/octet-stream", b64: await blobToB64(b) }; files++; }
+      catch(_){ failed++; }
+    }
+  }
+  progress("打包中…");
+  return { blob: new Blob([JSON.stringify(out)], { type: "application/json" }), docs, files, failed };
+};
 window.__fbIsEmpty = async () => (await getDocs(collection(fs, "units"))).empty && (await getDocs(collection(fs, "contracts"))).empty;
 
 // ---------- 給 roles.js 用的工具 ----------

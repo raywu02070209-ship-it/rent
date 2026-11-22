@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="css/roles.css?v=20261122b">
+<link rel="stylesheet" href="css/roles.css?v=20261122c">
 <title>套房管理系統</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;700;800&family=IBM+Plex+Mono:wght@500&family=LXGW+WenKai+TC:wght@400;700&family=Huninn&display=swap">
@@ -38,7 +38,7 @@ body{background:var(--bg,#f3f2ee)}
 .mvcard{width:min(460px,100%);background:var(--surface,#fff);color:var(--fg,#111);border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:12px}
 .mvcard h2{margin:0;font-size:19px}
 .mvcard ol{margin:0;padding-left:1.3em;font-size:14px;line-height:1.7}
-.mvcard .pbtn{display:inline-block;text-align:center;padding:11px 14px;border-radius:10px;background:var(--accent,#2b5d52);color:var(--accent-ink,#fff);font-weight:700;cursor:pointer;position:relative}
+.mvcard .pbtn{display:inline-block;font:inherit;border:0;text-align:center;padding:11px 14px;border-radius:10px;background:var(--accent,#2b5d52);color:var(--accent-ink,#fff);font-weight:700;cursor:pointer;position:relative}
 .mvcard .pbtn input{position:absolute;opacity:0;width:1px;height:1px}
 .mvcard .st{font-size:14px;min-height:1.4em}
 .mvcard .row{display:flex;justify-content:flex-end}
@@ -75,17 +75,14 @@ body{background:var(--bg,#f3f2ee)}
   </div>
 </div>
 
-<div class="whobar" id="whoBar" hidden><span id="whoami"></span><button type="button" id="moveBtn">資料搬家</button><button type="button" id="logoutBtn">登出</button></div>
+<div class="whobar" id="whoBar" hidden><span id="whoami"></span><button type="button" id="backupBtn">下載備份</button><button type="button" id="logoutBtn">登出</button></div>
 
 <div class="mvbox" id="mvBox" hidden>
   <div class="mvcard" role="dialog" aria-labelledby="mvTitle">
-    <h2 id="mvTitle">資料搬家</h2>
-    <ol>
-      <li>在 Claude 打開原本的紀錄簿，按上方的「<b>匯出搬家檔</b>」，會下載一個 .json 檔。</li>
-      <li>回到這裡，按下面的按鈕選那個檔案。</li>
-      <li>等進度跑完就好，房號、合約、紀錄、照片、印章都會一起搬過來。</li>
-    </ol>
-    <label class="pbtn">選擇搬家檔<input type="file" id="mvFile" accept=".json,application/json"></label>
+    <h2 id="mvTitle">下載備份</h2>
+    <p style="margin:0;font-size:14px;line-height:1.7">把房號、合約、紀錄、電表、帳號權限、印章設定等全部資料存成一個檔案，放在你的電腦或手機。建議每個月備份一次，檔案請妥善保存（裡面有房客個資）。</p>
+    <button type="button" class="pbtn" id="bkFull">完整備份（含照片、簽名、證件）</button>
+    <button type="button" id="bkData">只備份文字資料（較快、檔案小）</button>
     <div class="st" id="mvStatus"></div>
     <div class="row"><button type="button" id="mvClose">關閉</button></div>
   </div>
@@ -3234,27 +3231,30 @@ document.getElementById("authLoading").hidden = false;
 document.getElementById("authEye").onclick = e => { const i = document.getElementById("authPw"), show = i.type === "password";
   i.type = show ? "text" : "password"; e.currentTarget.textContent = show ? "隱藏" : "顯示";
   e.currentTarget.setAttribute("aria-pressed", show); e.currentTarget.setAttribute("aria-label", show ? "隱藏密碼" : "顯示密碼"); };
-document.getElementById("moveBtn").onclick = () => { document.getElementById("mvStatus").textContent = ""; document.getElementById("mvBox").hidden = false; };
+document.getElementById("backupBtn").onclick = () => { document.getElementById("mvStatus").textContent = ""; document.getElementById("mvBox").hidden = false; };
 document.getElementById("mvClose").onclick = () => { document.getElementById("mvBox").hidden = true; };
-document.getElementById("mvFile").onchange = async e => {
-  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
-  const stEl = document.getElementById("mvStatus");
+let backingUp = false;
+async function runBackup(withFiles){
+  if (backingUp) return; backingUp = true;
+  const st = document.getElementById("mvStatus"), btns = [document.getElementById("bkFull"), document.getElementById("bkData")];
+  btns.forEach(b => b.disabled = true);
   try{
-    if (!(await window.__fbIsEmpty()) && !confirmMove()) return;
-    stEl.textContent = "開始搬家…";
-    const r = await window.__fbImport(f, m => stEl.textContent = m);
-    stEl.textContent = `完成！搬過來 ${r.docs} 筆資料、${r.files} 個照片與檔案。`;
-  }catch(err){ stEl.textContent = "搬家失敗：" + (err.message || err); }
-};
-let moveArmed = false;
-function confirmMove(){ // 已經有資料時，要按第二次才會覆蓋
-  if (moveArmed){ moveArmed = false; return true; }
-  moveArmed = true; document.getElementById("mvStatus").textContent = "這裡已經有資料了。同一筆資料會被搬家檔的內容覆蓋，確定要搬請再選一次檔案。"; return false;
+    const r = await window.__fbBackup(withFiles, m => st.textContent = m);
+    const d = new Date(), pad = n => String(n).padStart(2, "0");
+    const name = `套房管理備份_${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${withFiles ? "_含照片" : ""}.json`;
+    const url = URL.createObjectURL(r.blob), a = document.createElement("a");
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    st.textContent = `完成！共 ${r.docs} 筆資料${withFiles ? `、${r.files} 個照片與檔案` : ""}（${(r.blob.size / 1048576).toFixed(1)} MB），檔名「${name}」。${r.failed ? `另有 ${r.failed} 個檔案讀不到，已略過。` : ""}`;
+  }catch(err){ st.textContent = "備份失敗：" + (err.message || err); }
+  finally{ backingUp = false; btns.forEach(b => b.disabled = false); }
 }
+document.getElementById("bkFull").onclick = () => runBackup(true);
+document.getElementById("bkData").onclick = () => runBackup(false);
 </script>
-<script src="js/roles.js?v=20261122b"></script>
+<script src="js/roles.js?v=20261122c"></script>
 <script type="module">
-import "./js/fb.js?v=20261122b";
+import "./js/fb.js?v=20261122c";
 document.getElementById("authLoading").hidden = true;
 </script>
 </body>

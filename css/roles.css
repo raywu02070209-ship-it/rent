@@ -1,5 +1,5 @@
 /* ---- 依身分隱藏功能 ---- */
-body:not(.role-admin) #moveBtn{display:none}
+body:not(.role-admin) #backupBtn{display:none}
 body.role-tenant .wrap{display:none}
 body.role-owner #tfBtn, body.role-owner #addUnitBtn, body.role-owner #addBtn, body.role-owner #moveExportBtn,
 body.role-owner #newContractBtn, body.role-owner #sealBtn, body.role-owner #addPropBtn, body.role-owner .fontpick,

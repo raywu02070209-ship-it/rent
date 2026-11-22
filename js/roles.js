@@ -623,7 +623,7 @@ function initAdmin(){
       <button type="button" class="danger" data-accdel="${E(a.id)}">刪除</button></div>`).join("") : `<p class="hint">目前還沒有房客或屋主帳號。</p>`;
   }
   const accBtn = document.createElement("button"); accBtn.type = "button"; accBtn.id = "accBtn"; accBtn.textContent = "帳號權限";
-  $("whoBar").insertBefore(accBtn, $("moveBtn"));
+  $("whoBar").insertBefore(accBtn, $("backupBtn"));
 
   // ---- 預覽身分：用管理員帳號看屋主／房客的畫面 ----
   const pvBtn = document.createElement("button"); pvBtn.type = "button"; pvBtn.id = "pvBtn"; pvBtn.textContent = "預覽屋主／房客畫面";
