@@ -10,6 +10,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject }
 import { firebaseConfig, ADMIN_EMAILS } from "./firebase-config.js";
 
 const app = initializeApp(firebaseConfig);
+window.__adminEmails = ADMIN_EMAILS;
 const auth = getAuth(app);
 auth.languageCode = "zh-TW";   // 驗證信、重設密碼信用繁體中文
 const fs = initializeFirestore(app, { ignoreUndefinedProperties: true });

@@ -5,6 +5,17 @@ const $ = id => document.getElementById(id);
 const E = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const nowISO = () => new Date().toISOString();
 const REQ_TYPE = { repair: "報修", purchase: "代購", assist: "其他協助" };
+// 房客送出申請／簽約時寄 Email 通知管理人（由 Firebase「Trigger Email」擴充功能寄出；寄不出去也不影響房客送出）
+async function notifyAdmin(kind, subject, lines){
+  try{
+    const to = (window.__adminEmails || [])[0]; if (!to) return;
+    const site = location.origin + location.pathname;
+    const esc2 = t => String(t).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+    await window.__fb.addDoc("mail", { to: [to], kind, createdAt: nowISO(), message: { subject,
+      text: lines.join("\n") + "\n\n打開套房管理系統：" + site,
+      html: `<div style="font-family:sans-serif;font-size:15px;line-height:1.7">${lines.map(l => `<div>${esc2(l)}</div>`).join("")}<p style="margin-top:18px"><a href="${esc2(site)}" style="background:#2b5d52;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">打開套房管理系統</a></p></div>` } });
+  }catch(_){}
+}
 const REQ_STATUS = { new: "已送出，等待處理", todo: "已受理", doing: "處理中", done: "已完成", rejected: "不處理" };
 const shortProp = p => String(p || "").replace(/^(台|臺)中市.{1,3}區/, "");
 const unitLabel = u => `${shortProp(u.property)} ${u.room}`;
@@ -83,6 +94,10 @@ function initTenant(acc){
       await window.__fb.addDoc("requests", { uid: window.__uid, email: (window.__acc && window.__acc.email) || "", unitId, room: label, name: acc.name || "",
         phone, type: document.querySelector("input[name=tpType]:checked").value, desc, when: $("tpWhen").value.trim(), photos: urls, status: "new", createdAt: nowISO() });
       photos.forEach(p => URL.revokeObjectURL(p.url)); photos = []; drawPhotos();
+      const tLabel = REQ_TYPE[document.querySelector("input[name=tpType]:checked").value] || "申請", when = $("tpWhen").value.trim();
+      notifyAdmin("request", `【${tLabel}】${label} ${acc.name || ""}`, [
+        `房客送出了一筆${tLabel}：`, `房號：${label}`, `房客：${acc.name || ""}　電話：${phone}`,
+        `狀況：${desc}`, ...(when ? [`方便時間：${when}`] : []), `照片：${urls.length} 張（請到網站查看）`]);
       $("tpDesc").value = ""; $("tpWhen").value = "";
       toast("已送出，管理人會盡快與你聯繫");
     }catch(e2){ err("送出失敗，請檢查網路後再試一次。"); }
@@ -169,6 +184,9 @@ function initTenant(acc){
         const now = nowISO(); stage = "儲存合約";
         await ccol.doc(c.id).update({ tenant: c.tenant, tenant2: c.hasCoTenant ? c.tenant2 : {}, guarantor: c.hasGuarantor ? c.guarantor : {}, cleaning: c.cleaning,
           stamps: c.stamps, sigs, idPhotos, actualStamps: c.actual || {}, status: "tenantSigned", tenantSignedAt: now, updatedAt: now });
+        { const names = [c.tenant && c.tenant.name, c.hasCoTenant && c.tenant2 && c.tenant2.name].filter(Boolean).join("、");
+          notifyAdmin("sign", `【房客已線上簽約】${c.room || ""} ${names}`, [`房客已完成線上簽約，等你確認：`, `物件：${c.property || ""}${c.floor || ""}`, `房號：${c.room || ""}`,
+            `承租人：${names}`, `租期：${c.leaseStart || ""} ～ ${c.leaseEnd || ""}`, `請到網站「合約」按「代理人確認完成」。`]); }
         Object.values(S.previews).forEach(u => URL.revokeObjectURL(u)); S = null;
         $("signWrap").hidden = true; document.body.style.overflow = "";
         toast("已送出簽名，管理人確認後就完成續約");
