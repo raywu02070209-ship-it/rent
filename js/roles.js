@@ -257,9 +257,10 @@ function initMeter(){
   function setup(u){
     const c = latestContract(u), m = u.meter || {};
     const mode = (c && c.elecMode === "self") || m.mode === "self" ? "self" : ((c && c.meterMode === "split") || m.mode === "split" ? "split" : "single");
-    const avg = !!(c && c.elecMode === "avg");
-    const rate = avg ? (num(meterCfg.avgRate) ?? "") : (num(c && c.elecRate) ?? num(meterCfg.rate) ?? 5);
-    return { mode, rate, avg };
+    // 計費方式：有簽約就照合約；系統裡沒有合約的房間，用房號上自己選的方式
+    const avg = c ? c.elecMode === "avg" : m.price === "avg";
+    const rate = avg ? "" : (num(c && c.elecRate) ?? num(meterCfg.rate) ?? 5);
+    return { mode, rate, avg, fromContract: !!c, c };
   }
   const unitReads = u => reads.filter(r => r.unitId === u.id).sort((a, b) => String(b.date + b.createdAt).localeCompare(String(a.date + a.createdAt)));
   function prevOf(u, mode){
@@ -282,8 +283,27 @@ function initMeter(){
   const props = () => allProps().filter(p => units.some(u => u.property === p));
   const sortUnits = us => us.sort((a, b) => String(a.room).localeCompare(String(b.room), "zh-Hant", { numeric: true }));
 
+  // 每個物件的台電帳單（依平均電價計費的房間共用）
+  const billOf = p => ((meterCfg.bills || {})[p]) || {};
+  function billBox(p){
+    const b = billOf(p);
+    return `<div class="mt-bill" data-billp="${E(p)}">
+      <b>台電帳單（依平均電價計費的房間）</b>
+      <div class="mt-bill-in">
+        <label><small>帳單月份</small><input type="month" data-billm value="${E(b.month || "")}"></label>
+        <label><small>計費期間至</small><input type="date" data-billto value="${E(b.to || "")}"></label>
+        <label><small>本期平均每度電價</small><span class="mt-rate"><input data-billr inputmode="decimal" placeholder="總電費÷總度數" value="${E(b.rate ?? "")}"> 元</span></label>
+      </div>
+      ${b.month ? `<small class="mt-bill-last">上次填的是 ${E(ymZhM(b.month))} 帳單${b.rate ? `，每度 ${E(b.rate)} 元` : ""}；換新帳單時請更新</small>` : ""}
+    </div>`;
+  }
+  const ymZhM = ym => { const [y, m] = String(ym).split("-").map(Number); return y ? `${y}年${m}月` : ""; };
+  const billVals = p => { const box = view.querySelector(`.mt-bill[data-billp="${CSS.escape(p)}"]`); if (!box) return {};
+    return { month: box.querySelector("[data-billm]").value, to: box.querySelector("[data-billto]").value, rate: num(box.querySelector("[data-billr]").value) }; };
+
   function draw(){
     // 重畫前先記住已輸入的度數，畫完再填回去（資料更新時不會把正在輸入的數字清掉）
+    const keepBill = view.dataset.reset ? [] : [...view.querySelectorAll(".mt-bill input")].map(i => [i.closest(".mt-bill").dataset.billp, [...i.attributes].find(a => a.name.startsWith("data-bill")).name, i.value]);
     const keep = view.dataset.reset ? [] : [...view.querySelectorAll(".mt-row[data-uid] input")].map(i => [i.closest(".mt-row").dataset.uid, i.getAttribute("data-cur") ? "c" + i.dataset.cur : i.getAttribute("data-prev") ? "p" + i.dataset.prev : "rate", i.value, i === document.activeElement]);
     const ps = props(); if (propFilter && !ps.includes(propFilter)) propFilter = "";
     const shown = propFilter ? [propFilter] : ps;
@@ -292,28 +312,33 @@ function initMeter(){
       <div class="mt-top">
         <label class="field"><span>抄表日期</span><input type="date" id="mtDate" value="${E(view.dataset.date || today())}"></label>
         <label class="field"><span>物件</span><select id="mtProp"><option value="">全部物件</option>${ps.map(p => `<option ${p === propFilter ? "selected" : ""}>${E(p)}</option>`).join("")}</select></label>
-        <label class="field"><span>預設每度（合約沒寫時使用）</span><span class="mt-rate"><input id="mtDefRate" type="number" step="0.1" min="0" inputmode="decimal" value="${E(meterCfg.rate)}"> 元</span></label>
+        <label class="field"><span>預設每度（合約沒寫時使用）</span><span class="mt-rate"><input id="mtDefRate" type="number" step="0.1" min="0" inputmode="decimal" value="${E(num(meterCfg.rate) ?? 5)}"> 元</span></label>
       </div>
-      <p class="hint">輸入這次抄到的度數，系統會用上次度數自動算出用電度數和電費。費率依各房最新合約的「每度電費」；第一次抄表時，上次度數會帶入起租度數，也可以自己修改。</p>
+      <p class="hint">輸入這次抄到的度數，系統會用上次度數自動算出用電度數和電費。每間房依合約的計費方式：「每度固定」用合約上的價格；「台電平均電價」請在該物件上方填台電帳單月份與本期平均電價。第一次抄表時，上次度數會帶入起租度數，也可以自己修改。</p>
       ${unpaid.length ? `<div class="mt-unpaid">尚未收款：${unpaid.length} 筆，共 ${money(unpaid.reduce((a, r) => a + r.amount, 0))}　<button type="button" id="mtShowUnpaid">查看</button></div>` : ""}
-      ${shown.map(p => `<section class="mt-prop"><h3>${E(p)}</h3>${sortUnits(units.filter(u => u.property === p)).map(rowHTML).join("")}</section>`).join("")}
+      ${shown.map(p => { const us = sortUnits(units.filter(u => u.property === p)), hasAvg = us.some(u => { const s0 = setup(u); return s0.avg && s0.mode !== "self"; });
+        return `<section class="mt-prop"><h3>${E(p)}</h3>${hasAvg ? billBox(p) : ""}${us.map(rowHTML).join("")}</section>`; }).join("")}
       <p class="err" id="mtErr" hidden></p>
       <div class="mt-bar"><span id="mtSum"></span><button type="button" class="primary" id="mtSave">儲存這次抄表</button></div>
       <section class="mt-hist" id="mtHist">${histHTML()}</section>`;
     enhanceDates(view); delete view.dataset.reset;
+    keepBill.forEach(([p, k, v]) => { const i = view.querySelector(`.mt-bill[data-billp="${CSS.escape(p)}"] [${k}]`); if (i && v !== "") i.value = v; });
     keep.forEach(([uid, k, v, focused]) => {
       const row = view.querySelector(`.mt-row[data-uid="${CSS.escape(uid)}"]`); if (!row) return;
       const i = k === "rate" ? row.querySelector("[data-rate]") : row.querySelector(k[0] === "c" ? `[data-cur="${k.slice(1)}"]` : `[data-prev="${k.slice(1)}"]`);
       if (i && (k[0] === "c" || v !== "")) { if (k[0] !== "c" || v) i.value = v; if (focused) i.focus(); }
     });
     view.querySelectorAll(".mt-row[data-uid]").forEach(updRow); updSum();
+    if (doneShown) showDone(true);   // 資料更新重畫時，剛儲存的電費通知不要消失
   }
   function rowHTML(u){
-    const { mode, rate, avg } = setup(u);
+    const { mode, rate, avg, fromContract } = setup(u);
     const tenant = u.tenant ? `${E(u.tenant)}${E(u.honor || "")}` : `<span class="mt-vac">空房</span>`;
     if (mode === "self") return `<div class="mt-row mt-self"><div class="mt-h"><b>${E(u.room)}</b>${tenant}</div><small>台電獨立電表，房客自行繳費，不需抄表</small></div>`;
     const pv = prevOf(u, mode), keys = mode === "split" ? [["r110", "110V"], ["r220", "220V"]] : [["r", ""]];
-    return `<div class="mt-row" data-uid="${E(u.id)}" data-mode="${mode}">
+    const how = fromContract ? `<span class="mt-how">依合約：${avg ? "台電平均電價" : `每度 ${E(rate)} 元`}</span>`
+      : `<label class="mt-how">系統沒有這間的合約，計費方式：<select data-price="${E(u.id)}"><option value="fixed" ${avg ? "" : "selected"}>每度固定</option><option value="avg" ${avg ? "selected" : ""}>台電平均電價</option></select></label>`;
+    return `<div class="mt-row" data-uid="${E(u.id)}" data-mode="${mode}" data-prop="${E(u.property)}"${avg ? ' data-avg="1"' : ""}>
       <div class="mt-h"><b>${E(u.room)}</b>${tenant}<span class="mt-mode">${mode === "split" ? "110V／220V 分開" : "單一電表"}</span></div>
       ${keys.map(([k, lb]) => `<div class="mt-in">
         ${lb ? `<span class="mt-lb">${lb}</span>` : ""}
@@ -321,28 +346,34 @@ function initMeter(){
         <span class="mt-arrow">→</span>
         <label><small>本次</small><input data-cur="${k}" inputmode="decimal" placeholder="輸入本次度數"></label>
       </div>`).join("")}
-      <div class="mt-res"><small>${E(pv.from || "沒有上次紀錄，請填上次度數")}</small><span class="mt-rt">${avg ? "台電均價" : "每度"} <input data-rate inputmode="decimal" value="${E(rate)}"${avg ? ' placeholder="帳單均價" data-avg="1"' : ""}> 元</span><b class="mt-amt"></b></div>
+      ${how}
+      <div class="mt-res"><small>${E(pv.from || "沒有上次紀錄，請填上次度數")}</small>${avg ? `<span class="mt-rt">依上方台電帳單均價</span>` : `<span class="mt-rt">每度 <input data-rate inputmode="decimal" value="${E(rate)}"> 元</span>`}<b class="mt-amt"></b></div>
     </div>`;
   }
   function rowVals(row){
     const g = sel => { const o = {}; row.querySelectorAll(`[${sel}]`).forEach(i => o[i.getAttribute(sel)] = num(i.value)); return o; };
-    return { mode: row.dataset.mode, prev: g("data-prev"), cur: g("data-cur"), rate: num(row.querySelector("[data-rate]").value) ?? 0 };
+    const avg = row.dataset.avg === "1", bill = avg ? billVals(row.dataset.prop) : null;
+    return { mode: row.dataset.mode, prev: g("data-prev"), cur: g("data-cur"), avg, bill, rate: avg ? (bill.rate ?? 0) : (num(row.querySelector("[data-rate]").value) ?? 0) };
   }
   function updRow(row){
     const v = rowVals(row), r = calc(v.mode, v.prev, v.cur, v.rate), el = row.querySelector(".mt-amt");
     el.className = "mt-amt" + (r && r.err ? " bad" : "");
-    el.textContent = !r ? "" : r.err ? r.err : `${fmtN(r.kwh)} 度 × ${v.rate} = ${money(r.amount)}`;
+    el.textContent = !r ? "" : r.err ? r.err : (v.avg && !(v.rate > 0)) ? `${fmtN(r.kwh)} 度，請在上方填本期平均電價` : `${fmtN(r.kwh)} 度 × ${v.rate} = ${money(r.amount)}`;
   }
   function updSum(){
     let n = 0, tot = 0;
     view.querySelectorAll(".mt-row[data-uid]").forEach(row => { const v = rowVals(row), r = calc(v.mode, v.prev, v.cur, v.rate); if (r && !r.err){ n++; tot += r.amount; } });
     const el = $("mtSum"); if (el) el.textContent = n ? `本次 ${n} 間，電費合計 ${money(tot)}` : "";
   }
-  view.addEventListener("input", e => { const row = e.target.closest(".mt-row[data-uid]"); if (row) updRow(row); updSum(); });
+  view.addEventListener("input", e => {
+    const bill = e.target.closest(".mt-bill");
+    if (bill) view.querySelectorAll(`.mt-row[data-avg="1"][data-prop="${CSS.escape(bill.dataset.billp)}"]`).forEach(updRow);
+    const row = e.target.closest(".mt-row[data-uid]"); if (row) updRow(row); updSum(); });
   view.addEventListener("change", async e => {
     if (e.target.id === "mtProp"){ propFilter = e.target.value; view.dataset.date = $("mtDate").value; draw(); }
     else if (e.target.id === "mtDate"){ view.dataset.date = e.target.value; }
     else if (e.target.id === "mtDefRate"){ const r = num(e.target.value); if (r != null){ await window.__fb.setDoc("settings/meter", { rate: r }, true); toast("已更新預設電費"); } }
+    else if (e.target.dataset.price){ await window.__fb.setDoc("units/" + e.target.dataset.price, { meter: { price: e.target.value } }, true); toast("已更新這間的計費方式"); }
     else if (e.target.dataset.paid){ await window.__fb.setDoc("meterReads/" + e.target.dataset.paid, { paid: e.target.checked, paidDate: e.target.checked ? today() : "" }, true); }
   });
   view.addEventListener("click", async e => {
@@ -358,25 +389,26 @@ function initMeter(){
   async function save(btn){
     const err = m => { $("mtErr").textContent = m; $("mtErr").hidden = !m; };
     const date = $("mtDate").value || today(), list = [];
-    let bad = 0, noAvg = 0, lastAvg = null;
+    let bad = 0, noAvg = 0, noMonth = 0; const bills = {};
     view.querySelectorAll(".mt-row[data-uid]").forEach(row => {
       const v = rowVals(row), r = calc(v.mode, v.prev, v.cur, v.rate); if (!r) return;
       if (r.err){ bad++; return; }
-      const isAvg = !!row.querySelector("[data-avg]");
-      if (isAvg && !(v.rate > 0)){ noAvg++; return; }
-      if (isAvg) lastAvg = v.rate;
+      if (v.avg && !(v.rate > 0)){ noAvg++; return; }
+      if (v.avg && !v.bill.month){ noMonth++; return; }
+      if (v.avg) bills[row.dataset.prop] = { month: v.bill.month, to: v.bill.to || "", rate: v.rate };
       const u = units.find(x => x.id === row.dataset.uid);
       list.push({ unitId: u.id, property: u.property, room: u.room, tenant: u.tenant ? u.tenant + (u.honor || "") : "", date, mode: v.mode,
-        prev: v.prev, cur: v.cur, kwh: r.kwh, rate: v.rate, rateType: row.querySelector("[data-avg]") ? "avg" : "fixed", amount: r.amount, paid: false, shareTenant: !!u.tenant, createdAt: new Date().toISOString() });
+        prev: v.prev, cur: v.cur, kwh: r.kwh, rate: v.rate, rateType: v.avg ? "avg" : "fixed", ...(v.avg ? { billMonth: v.bill.month, billTo: v.bill.to || "" } : {}), amount: r.amount, paid: false, shareTenant: !!u.tenant, createdAt: new Date().toISOString() });
     });
-    if (noAvg) return err(`有 ${noAvg} 間是依台電平均電價計算，請先填這期帳單的平均每度電價。`);
+    if (noAvg) return err(`有 ${noAvg} 間是依台電平均電價計算，請先在上方填本期平均每度電價。`);
+    if (noMonth) return err(`有 ${noMonth} 間是依台電平均電價計算，請在上方填台電帳單月份。`);
     if (bad) return err(`有 ${bad} 間的度數有問題（紅字），請修正後再儲存。`);
     if (!list.length) return err("請至少輸入一間的本次度數。");
     err(""); btn.disabled = true; btn.textContent = "儲存中…";
     try{
       lastSaved = [];
       for (const d of list){ const id = await window.__fb.addDoc("meterReads", d); lastSaved.push({ id, ...d }); }
-      if (lastAvg != null) window.__fb.setDoc("settings/meter", { avgRate: lastAvg }, true).catch(() => {});
+      if (Object.keys(bills).length) window.__fb.setDoc("settings/meter", { bills }, true).catch(() => {});
       toast(`已儲存 ${list.length} 間的抄表`);
       view.dataset.reset = "1"; view.dataset.date = date; draw(); showDone();
     }catch(_){ err("儲存失敗，請再試一次。"); btn.disabled = false; btn.textContent = "儲存這次抄表"; }
@@ -390,20 +422,22 @@ function initMeter(){
     return `【電費通知】${shortProp(r.property)} ${r.room}${r.tenant ? " " + r.tenant : ""}
 抄表日期：${zhDate(r.date)}
 ${line}
-用電 ${fmtN(r.kwh)} 度 × ${r.rateType === "avg" ? "台電平均每度" : "每度"} ${r.rate} 元 = ${money(r.amount).replace("$", "")} 元`;
+${r.rateType === "avg" && r.billMonth ? `電價：依台電 ${ymZhM(r.billMonth)} 帳單${r.billTo ? `（計費至 ${zhDate(r.billTo)}）` : ""}平均每度 ${r.rate} 元
+` : ""}用電 ${fmtN(r.kwh)} 度 × ${r.rateType === "avg" ? "台電平均每度" : "每度"} ${r.rate} 元 = ${money(r.amount).replace("$", "")} 元`;
   };
   async function copyText(t, b){
     let ok = false; try{ await navigator.clipboard.writeText(t); ok = true; }catch(_){}
     if (!ok){ const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try{ ok = document.execCommand("copy"); }catch(_){} ta.remove(); }
     if (b){ const l = b.textContent; b.textContent = ok ? "已複製" : "複製失敗"; setTimeout(() => b.textContent = l, 1500); }
   }
-  function showDone(){
-    if (!lastSaved.length) return;
+  let doneShown = false;
+  function showDone(quiet){
+    if (!lastSaved.length) return; doneShown = true;
     const box = document.createElement("section"); box.className = "mt-done";
     box.innerHTML = `<h3>這次電費（${lastSaved.length} 間）</h3>
       ${lastSaved.map(r => `<div class="mt-msg"><pre>${E(msg(r))}</pre><button type="button" data-copy="${E(r.id)}">複製</button></div>`).join("")}
       <button type="button" class="primary" data-copy="all">全部複製（貼到 LINE）</button>`;
-    view.querySelector(".mt-bar").after(box); box.scrollIntoView({ behavior: "smooth" });
+    view.querySelector(".mt-bar").after(box); if (!quiet) box.scrollIntoView({ behavior: "smooth" });
   }
   function histHTML(){
     const shownUnits = new Set(units.filter(u => !propFilter || u.property === propFilter).map(u => u.id));
@@ -411,7 +445,7 @@ ${line}
     if (!l.length) return `<h3>抄表紀錄</h3><p class="hint">還沒有抄表紀錄。</p>`;
     return `<h3>抄表紀錄</h3>` + l.map(r => `<div class="mt-hrow${r.paid ? " paid" : ""}">
       <span class="mt-hd">${E(zhDate(r.date))}</span><b>${E(shortProp(r.property))} ${E(r.room)}</b><span>${E(r.tenant || "")}</span>
-      <span class="mt-hk">${fmtN(r.kwh)} 度・${money(r.amount)}</span>
+      <span class="mt-hk">${fmtN(r.kwh)} 度・${money(r.amount)}${r.rateType === "avg" && r.billMonth ? `<small>（${E(ymZhM(r.billMonth))}帳單均價 ${E(r.rate)}）</small>` : ""}</span>
       <label class="mt-paid"><input type="checkbox" data-paid="${E(r.id)}" ${r.paid ? "checked" : ""}> 已收款</label>
       <span class="mt-ha"><button type="button" data-copy="${E(r.id)}">複製通知</button><button type="button" class="danger" data-mdel="${E(r.id)}">刪除</button></span>
     </div>`).join("");
