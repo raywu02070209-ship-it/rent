@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="css/roles.css?v=20261122d">
+<link rel="stylesheet" href="css/roles.css?v=20261122e">
 <title>套房管理系統</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;700;800&family=IBM+Plex+Mono:wght@500&family=LXGW+WenKai+TC:wght@400;700&family=Huninn&display=swap">
@@ -437,6 +437,14 @@ fieldset.grp .full{grid-column:1/-1}
 .doc .psig .spot{border-bottom:none;min-height:44px}
 .doc .sigline{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:10px 0}
 .doc .seal{height:60px;width:auto;max-width:90px;object-fit:contain;vertical-align:middle;margin:-16px 2px -16px 4px;mix-blend-mode:multiply}
+.pet-rows{display:flex;flex-direction:column;gap:8px}
+.pet-row{display:grid;grid-template-columns:3.5em 5.5em 1fr 1fr;gap:6px;align-items:center}
+.pet-row b{font-size:14px;font-weight:600}
+.pet-row input[id^=pet_chip]{grid-column:2/-1}
+.field .pet-row select,.field .pet-row input{padding:6px 8px;font-size:15px}
+.pet-dep{display:flex;flex-direction:column;gap:4px;margin-top:10px;font-size:14px;color:var(--muted)}
+.pet-dep span{display:flex;align-items:center;gap:6px;color:var(--fg)}
+.field .pet-dep input{width:9em}
 .oc-row{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line)}
 .oc-row:last-child{border-bottom:none}
 .oc-row:has(input[type=checkbox]:checked){background:var(--accent-soft)}
@@ -840,6 +848,9 @@ fieldset.grp .full{grid-column:1/-1}
     <fieldset class="grp"><legend>其他條件</legend>
       <div class="field full"><span>附加文件</span>
         <div class="checks"><label><input type="checkbox" id="c_hasPet"> 房客有養寵物（加簽寵物飼養管理規章）</label><label><input type="checkbox" id="c_hasGuarantor"> 需要保證人</label><label><input type="checkbox" id="c_hasCoTenant"> 共同承租（兩位承租人，例如申請租屋補助）</label></div></div>
+      <div class="field full" id="petBox" hidden><span>寵物資料（印在寵物規章的登記表，可留空讓房客手寫）</span>
+        <div class="pet-rows"><div class="pet-row"><b>寵物一</b><select id="pet_kind0" aria-label="寵物一種類"><option value="">種類</option><option>犬</option><option>貓</option><option>其他</option></select><input id="pet_name0" placeholder="名字"><input id="pet_breed0" placeholder="品種／毛色"><input id="pet_chip0" placeholder="晶片號碼" inputmode="numeric"></div><div class="pet-row"><b>寵物二</b><select id="pet_kind1" aria-label="寵物二種類"><option value="">種類</option><option>犬</option><option>貓</option><option>其他</option></select><input id="pet_name1" placeholder="名字"><input id="pet_breed1" placeholder="品種／毛色"><input id="pet_chip1" placeholder="晶片號碼" inputmode="numeric"></div></div>
+        <label class="pet-dep">寵物清潔保證金（另收，不收請留空）<span><input id="c_petDeposit" type="number" min="0" inputmode="numeric" placeholder="例：5000"> 元</span></label></div>
       <div class="field full"><span>退租清潔方式（附約第七條）</span>
         <div class="checks"><label><input type="radio" name="c_clean" value="agent" checked> 委請甲方找專業清潔公司並支付費用</label><label><input type="radio" name="c_clean" value="self"> 自行請專業清潔</label></div></div>
       <label class="field full"><span>其他約定事項（附約，需雙方另行簽名）</span><textarea id="c_otherTerms" placeholder="沒有可留空"></textarea></label>
@@ -1939,24 +1950,65 @@ function docHTML(c, ctx){
   </div>`;
   });
 
-  if (c.hasPet) h += `<div class="pg">
+  if (c.hasPet){ const pets = (c.pets||[]).concat([{},{}]).slice(0, Math.max(2,(c.pets||[]).length)), pd = +c.petDeposit || 0;
+  h += `<div class="pg">
   <h1 style="font-size:20px;letter-spacing:.15em">房客寵物飼養管理規章</h1>
-  <p>${Bx(true)}有養寵物　${Bx(false)}無養寵物則無須加簽</p>
-  <p>為加強寵物飼養管理，保障其他住戶的人身安全和身體健康，維護公共秩序和環境衛生，制定本管理辦法：</p>
-  <p>一、對飼養寵物實行嚴格限養、嚴格管理、禁限結合的原則。</p>
-  <p>二、嚴格執行飼養寵物登記制度，養寵物之住戶需帶兩張寵物彩色照片及本人相關信息向管理人登記。</p>
-  <p>三、只允許養小型觀賞犬貓等寵物，必須圈（栓）養，嚴禁飼養烈性犬及成年體高超過３５釐米的犬種、雞、鴨、羊、猴等動物。</p>
-  <p>四、飼養小鳥及鴿子的居民，要嚴格限量限地，不得影響周邊居民之正常生活。</p>
-  <p>五、住戶寵物要定期到地方畜牧獸醫部門進行健康檢查，注射預防疫苗，持檢疫證明文件至管理人，每一年需檢查一次。</p>
-  <p>六、飼養寵物必須遵守下列事項：<br>１．禁止在本棟公共區域遛寵物，亦不得占用樓道、樓梯間、天台等共用地方，不得妨礙他人休息和生活，不得汙染環境。<br>２．小型觀賞寵物至戶外活動時，必須繫上寵物鍊（繩），長度不得超過兩米，並需由成年人牽領，遛寵物時應當避開老年人、殘疾人、孕婦和兒童。<br>３．寵物戶外排泄糞便，飼養人必須予以清除，不得影響住戶出行。<br>４．飼養寵物不得干擾他人正常生活及休息，如有，要積極採取有效措施予以制止。</p>
-  <p>七、本棟犬貓等寵物飼養辦法：<br>１．個人攜帶犬貓等寵物至戶外活動時，必須遵守以下規定：（１）繫好寵物鍊並由成人牽領、看管。（２）及時清理寵物排出之排泄物。<br>２．寵物咬傷人時，飼養人應當立即帶傷者至附近衛生防疫機構或醫院治療，並將傷人之寵物送獸醫防疫部門或其授權的下屬獸醫防疫機構留醫觀察。受傷人的相關所有醫藥費、交通費等所有損失費用需由飼養人承擔。<br>３．飼養人對寵物之病、傷、死妥善處理，禁止隨意遺棄或掩埋。</p>
-  <p>八、由於養護寵物管理不妥，對他人身體、財物造成損失及本建築物髒亂、損壞飼養人必須賠償其相關費用。<br>１．保持屋內清潔，避免寵物毛髮卡在地板縫隙或排水孔，如造成相關問題，飼養人應自行付費修復；租賃結束時，屋內寵物毛髮若未確實處理整潔，將另收房租３０％之費用另請清潔公司處理。如有寵物之異味將另外收取異味除臭消毒費用１００００元。<br>２．點交房屋時先拍照存證所附之家具，如承租後被寵物抓壞，飼養人應全額賠償。如有造成牆內之壁面油漆及壁紙髒損，每面牆收取４０００元。</p>
-  <p>九、有違反以上之規定行為，經管理人及房東勸導數次無效，房東及管理人有權要求強制遷出，並賠償一個月租金之懲罰性違約金。</p>
-  <p>十、全體住戶應遵守上述規定及其他相關規定。</p>
-  <div class="keep"><p>${Bx(true)}本寵物飼養管理規章，本人於承租入住前已詳細閱讀，無異議且願意遵守奉行。如有未盡事宜，房東及管理人得依需要加註更新管理規章內容，並於公布後立即生效，房客仍依遵守該事項。</p>
+  <p>乙方經甲方書面同意，於租賃期間在租賃住宅內飼養下列寵物。為維護住戶安寧、環境衛生及房屋設備，雙方同意遵守本規章。本規章為租賃契約之附件，與租賃契約具同等效力。</p>
+  <h2>一、寵物登記</h2>
+  <table><tr><th>種類</th><th>名字</th><th>品種／毛色</th><th>晶片號碼</th><th>狂犬病疫苗施打日期</th></tr>
+  ${pets.map(pt=>`<tr><td style="text-align:center">${esc(pt.kind||"")||"&nbsp;"}</td><td>${esc(pt.name||"")}</td><td>${esc(pt.breed||"")}</td><td>${esc(pt.chip||"")}</td><td style="text-align:center">　　年　　月　　日</td></tr>`).join("")}
+  </table>
+  <ol>
+  <li>飼養數量以上表所列為限。新增或更換寵物，應事先取得甲方書面同意並補辦登記。</li>
+  <li>犬、貓應依動物保護法辦理寵物登記（植入晶片），並每年施打狂犬病疫苗；乙方應將寵物登記證明及疫苗注射證明影本交甲方或管理人留存。</li>
+  </ol>
+  <h2>二、飼養範圍</h2>
+  <ol>
+  <li>限飼養小型犬、貓等性情溫馴之寵物。不得飼養依法公告具攻擊性之犬種、爬蟲類、家禽、家畜，及其他經甲方認定不適合於住宅飼養之動物。</li>
+  <li>不得於租賃住宅內繁殖、販售、寄養或代他人照顧動物。</li>
+  </ol>
+  <h2>三、居住安寧與公共區域</h2>
+  <ol>
+  <li>寵物應飼養於租賃住宅內，不得放養或留置於樓梯間、走廊、陽台、頂樓等公共區域，亦不得占用公共空間放置寵物用品。</li>
+  <li>寵物進出公共區域時，應繫上牽繩（長度不超過 1.5 公尺）或置於寵物籠、提袋內，並由乙方全程看管。</li>
+  <li>寵物於公共區域或建物周邊之排泄物，乙方應立即清除乾淨。</li>
+  <li>乙方應避免寵物持續吠叫、哀號或發出噪音干擾鄰居，晚間 10 時至翌日上午 8 時尤應注意；經鄰居反映並查證屬實者，乙方應立即改善。</li>
+  <li>乙方不得將寵物長時間單獨留置於屋內無人照顧；外出超過一日者，應將寵物攜出或委託他人照顧。</li>
+  </ol>
+  <h2>四、衛生與清潔</h2>
+  <ol>
+  <li>乙方應保持室內清潔，定期清理寵物毛髮、排泄物及飼料，避免產生異味、蚤蝨或孳生蚊蟲。</li>
+  <li>不得將寵物排泄物、貓砂、毛髮倒入馬桶、水槽或排水孔；因此造成管線堵塞者，修繕費用由乙方負擔。</li>
+  <li>乙方應定期為寵物施打預防針及驅除體內外寄生蟲；屋內發現跳蚤、壁蝨等，乙方應自費請專業人員除蟲。</li>
+  </ol>
+  <h2>五、損壞賠償與退租清潔</h2>
+  <ol>
+  <li>簽約時雙方已依附件表一點交房屋及設備現況。寵物抓咬、啃咬、便溺造成家具、門窗、紗窗、地板、牆面、窗簾等設備損壞者，乙方應負責修復或照價賠償。</li>
+  <li>牆面油漆、壁紙污損，每面牆收取新台幣 4,000 元。</li>
+  <li>退租時屋內寵物毛髮未確實清潔者，收取月租金 30% 之清潔費；有寵物異味者，另收取除臭消毒費新台幣 10,000 元。</li>
+  <li>退租時發現蚤蝨者，由甲方委請專業人員除蟲消毒，費用由乙方負擔。</li>
+  ${pd ? `<li>乙方另交付寵物清潔保證金新台幣 ${fv(num(pd))} 元，於退租點交無前述損壞、清潔費用後無息返還；前述費用超過保證金者，不足部分得自押金扣抵或由乙方另行給付。</li>` : `<li>前述各項費用，甲方得自押金中扣抵；不足部分，乙方應另行給付。</li>`}
+  </ol>
+  <h2>六、人身與財物損害責任</h2>
+  <ol>
+  <li>寵物咬傷、抓傷他人，或造成他人財物損失者，由乙方負全部責任，並負擔醫療、交通及其他相關賠償費用，與甲方無涉。</li>
+  <li>寵物咬傷人時，乙方應立即協助傷者就醫，並依規定將寵物送交動物醫院或動物防疫機關觀察。</li>
+  <li>寵物生病、受傷或死亡時，乙方應妥善處理，不得棄養，亦不得任意棄置或掩埋於社區及公共區域。</li>
+  </ol>
+  <h2>七、違規處理</h2>
+  <ol>
+  <li>乙方違反本規章，經甲方或管理人以書面、簡訊或通訊軟體通知限期改善而未改善者，甲方得要求乙方將寵物移出租賃住宅。</li>
+  <li>違規情節重大，或經通知後仍再次違反者，甲方得依租賃契約第三條第二項之約定終止租約，乙方並應賠償相當於一個月租金之違約金。</li>
+  </ol>
+  <h2>八、其他</h2>
+  <ol>
+  <li>本規章未盡事宜，依租賃契約、動物保護法及相關法令辦理。</li>
+  <li>本規章如需修訂，應經甲乙雙方書面同意後生效。</li>
+  </ol>
+  <div class="keep"><p>${Bx(true)}本人已於承租前詳細閱讀本寵物飼養管理規章，無異議並願意遵守。</p>
   <div class="sigline">乙方確認簽名：${TS("pet")}</div>
   ${date}</div>
-  </div>`;
+  </div>`; }
 
   if (ctx.ids && (c.idPhotos||[]).length) h += `<div class="pg">
   <h1 style="font-size:19px;letter-spacing:.1em">附件　承租人證件影本</h1>
@@ -2066,6 +2118,7 @@ $("c_otherCosts").innerHTML = OTHER_COSTS.map((x,i)=>`<div class="oc-row"><label
   <span class="oc-opt" id="ocw_${i}" hidden><select id="ocm_${i}" aria-label="${x}計價方式"><option value="bill">依${OC_BILL[x]}帳單</option><option value="fixed">每月固定</option></select>
   <span id="ocf_${i}" hidden><input id="oca_${i}" type="number" min="0" inputmode="numeric" aria-label="${x}每月金額"> 元</span></span></div>`).join("");
 const ocSync = () => OTHER_COSTS.forEach((x,i) => { $("ocw_"+i).hidden = !$("oc_"+i).checked; $("ocf_"+i).hidden = $("ocm_"+i).value !== "fixed"; });
+$("c_hasPet").addEventListener("change", e => { $("petBox").hidden = !e.target.checked; });
 $("c_otherCosts").addEventListener("change", ocSync);
 
 function fillUnitOptions(sel){
@@ -2113,7 +2166,9 @@ function setContractForm(c){
   $("c_notaryFee").value = c.notaryFee || ""; $("c_notaryFeeBy").value = c.notaryFeeBy || "lessor"; $("c_notaryAgentFee").value = c.notaryAgentFee || ""; $("c_notaryAgentFeeBy").value = c.notaryAgentFeeBy || "lessor";
   $("notaryBox").hidden = !c.notary;
   document.querySelector(`input[name=c_clean][value="${c.cleaning==="self"?"self":"agent"}"]`).checked = true;
-  $("c_hasPet").checked = !!c.hasPet; $("c_hasGuarantor").checked = !!c.hasGuarantor; $("c_hasCoTenant").checked = !!c.hasCoTenant;
+  [0,1].forEach(i => { const pt = (c.pets||[])[i] || {}; $("pet_kind"+i).value = pt.kind||""; $("pet_name"+i).value = pt.name||""; $("pet_breed"+i).value = pt.breed||""; $("pet_chip"+i).value = pt.chip||""; });
+  $("c_petDeposit").value = c.petDeposit || "";
+  $("c_hasPet").checked = !!c.hasPet; $("petBox").hidden = !c.hasPet; $("c_hasGuarantor").checked = !!c.hasGuarantor; $("c_hasCoTenant").checked = !!c.hasCoTenant;
   facRows = (c.facilities||[]).filter(f=>f.name && f.on!==false).map(f=>({name:f.name, on:true, spec:f.spec||"", qty:f.qty||"", price:f.price||""}));
   drawFac(); if ($("c_facCustom")) $("c_facCustom").remove();
 }
@@ -2121,7 +2176,7 @@ function templateFor(u){
   // 沿用同房號、否則同物件最近一份合約的條件
   const prev = [...contracts].filter(c=>c.unitId===u.id).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)))[0]
     || [...contracts].filter(c=>c.property===u.property).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)))[0] || {};
-  const keep = ["includes","includesOther","payMonths","payDay","elecMode","elecRate","meterMode","otherCosts","otherCostCfg","keys","facilities","lessorTerminate","tenantTerminate","usage","restore","restoreOther","cleaning","noticeMonths","notify","notary","notaryExec","notaryFee","notaryFeeBy","notaryAgentFee","notaryAgentFeeBy"];
+  const keep = ["includes","includesOther","payMonths","payDay","elecMode","elecRate","meterMode","otherCosts","otherCostCfg","hasPet","pets","petDeposit","keys","facilities","lessorTerminate","tenantTerminate","usage","restore","restoreOther","cleaning","noticeMonths","notify","notary","notaryExec","notaryFee","notaryFeeBy","notaryAgentFee","notaryAgentFeeBy"];
   const t = {}; keep.forEach(k => { if (prev[k]!==undefined) t[k] = prev[k]; });
   if (prev.unitId!==u.id && t.facilities) t.facilities = t.facilities.map(f=>({...f}));
   return t;
@@ -2195,7 +2250,8 @@ function collectContract(loose){
     notify: [["c_nt_email","電子郵件"],["c_nt_sms","簡訊"],["c_nt_app","通訊軟體"],["c_nt_letter","存證信函"]].filter(([id])=>$(id).checked).map(x=>x[1]),
     notary: document.querySelector("input[name=c_notary]:checked").value==="yes", notaryExec: [1,2,3].filter(i=>$("c_ne"+i).checked),
     notaryFee: $("c_notaryFee").value, notaryFeeBy: $("c_notaryFeeBy").value, notaryAgentFee: $("c_notaryAgentFee").value, notaryAgentFeeBy: $("c_notaryAgentFeeBy").value,
-    hasPet: $("c_hasPet").checked, hasGuarantor: $("c_hasGuarantor").checked, hasCoTenant: $("c_hasCoTenant").checked,
+    hasPet: $("c_hasPet").checked, pets: [0,1].map(i => ({kind:$("pet_kind"+i).value, name:$("pet_name"+i).value.trim(), breed:$("pet_breed"+i).value.trim(), chip:$("pet_chip"+i).value.trim()})).filter(p => p.kind||p.name||p.breed||p.chip),
+    petDeposit: $("c_petDeposit").value.trim(), hasGuarantor: $("c_hasGuarantor").checked, hasCoTenant: $("c_hasCoTenant").checked,
     cleaning: document.querySelector("input[name=c_clean]:checked").value,
     otherTerms: $("c_otherTerms").value.trim(),
   };
@@ -3252,9 +3308,9 @@ async function runBackup(withFiles){
 document.getElementById("bkFull").onclick = () => runBackup(true);
 document.getElementById("bkData").onclick = () => runBackup(false);
 </script>
-<script src="js/roles.js?v=20261122d"></script>
+<script src="js/roles.js?v=20261122e"></script>
 <script type="module">
-import "./js/fb.js?v=20261122d";
+import "./js/fb.js?v=20261122e";
 document.getElementById("authLoading").hidden = true;
 </script>
 </body>
