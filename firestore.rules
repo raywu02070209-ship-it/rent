@@ -24,15 +24,6 @@ service cloud.firestore {
     match /meterReads/{id} { allow read: if (hasRole('owner') && myUnit(resource.data.unitId))
       || (hasRole('tenant') && myUnit(resource.data.unitId) && resource.data.shareTenant == true); }
 
-    // 房客送出申請／簽約時的 Email 通知（只能寄給管理員，由 Trigger Email 擴充功能寄出）
-    match /mail/{id} {
-      allow create: if hasRole('tenant')
-        && request.resource.data.to == ['raywu02070209@gmail.com']
-        && request.resource.data.keys().hasOnly(['to', 'kind', 'createdAt', 'message'])
-        && request.resource.data.message.keys().hasOnly(['subject', 'text', 'html'])
-        && request.resource.data.message.text.size() < 5000 && request.resource.data.message.html.size() < 10000;
-    }
-
     // 房客：報修申請（只能新增、看自己的）
     match /requests/{id} {
       allow read: if hasRole('tenant') && resource.data.uid == request.auth.uid;

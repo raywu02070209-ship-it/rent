@@ -5,15 +5,17 @@ const $ = id => document.getElementById(id);
 const E = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const nowISO = () => new Date().toISOString();
 const REQ_TYPE = { repair: "報修", purchase: "代購", assist: "其他協助" };
-// 房客送出申請／簽約時寄 Email 通知管理人（由 Firebase「Trigger Email」擴充功能寄出；寄不出去也不影響房客送出）
+// 房客送出申請／簽約時寄 Email 通知管理人（透過管理人自己的 Google Apps Script「套房管理通知」寄出；寄不出去也不影響房客送出）
+const NOTIFY_URL = "https://script.google.com/macros/s/AKfycbwp-YCHfFOhPEkIGRfVQA_6XutQgXcIwJ_jlh1SUC1tXFwzNXY8azpvt4WxAxD08LHk/exec";
 async function notifyAdmin(kind, subject, lines){
   try{
-    const to = (window.__adminEmails || [])[0]; if (!to) return;
     const site = location.origin + location.pathname;
     const esc2 = t => String(t).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
-    await window.__fb.addDoc("mail", { to: [to], kind, createdAt: nowISO(), message: { subject,
+    const body = JSON.stringify({ key: "rent-chengrui-notify", kind, subject,
       text: lines.join("\n") + "\n\n打開套房管理系統：" + site,
-      html: `<div style="font-family:sans-serif;font-size:15px;line-height:1.7">${lines.map(l => `<div>${esc2(l)}</div>`).join("")}<p style="margin-top:18px"><a href="${esc2(site)}" style="background:#2b5d52;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">打開套房管理系統</a></p></div>` } });
+      html: `<div style="font-family:sans-serif;font-size:15px;line-height:1.7">${lines.map(l => `<div>${esc2(l)}</div>`).join("")}<p style="margin-top:18px"><a href="${esc2(site)}" style="background:#2b5d52;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">打開套房管理系統</a></p></div>` });
+    // text/plain + no-cors：不觸發跨網域預檢，Apps Script 照樣收得到
+    await fetch(NOTIFY_URL, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body, keepalive: true });
   }catch(_){}
 }
 const REQ_STATUS = { new: "已送出，等待處理", todo: "已受理", doing: "處理中", done: "已完成", rejected: "不處理" };
