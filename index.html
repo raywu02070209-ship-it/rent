@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="css/roles.css?v=20261122a">
+<link rel="stylesheet" href="css/roles.css?v=20261122b">
 <title>套房管理系統</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;700;800&family=IBM+Plex+Mono:wght@500&family=LXGW+WenKai+TC:wght@400;700&family=Huninn&display=swap">
@@ -440,6 +440,14 @@ fieldset.grp .full{grid-column:1/-1}
 .doc .psig .spot{border-bottom:none;min-height:44px}
 .doc .sigline{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:10px 0}
 .doc .seal{height:60px;width:auto;max-width:90px;object-fit:contain;vertical-align:middle;margin:-16px 2px -16px 4px;mix-blend-mode:multiply}
+.oc-row{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line)}
+.oc-row:last-child{border-bottom:none}
+.oc-row:has(input[type=checkbox]:checked){background:var(--accent-soft)}
+.oc-row>label{display:flex;align-items:center;gap:10px;cursor:pointer;min-width:7em;padding:2px 0}
+.oc-row>label>input{width:18px;height:18px;margin:0;flex:0 0 auto;accent-color:var(--accent)}
+.oc-opt{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:14px}
+.field .oc-opt select,.field .oc-opt input{font:inherit;font-size:15px;padding:5px 8px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);width:auto}
+.field .oc-opt input{width:6em}
 .doc .seal.sm{height:40px;max-width:60px;margin:-10px 2px -10px 4px}
 .sealown{padding-bottom:10px;margin-bottom:10px;border-bottom:1px dashed var(--line)}
 .sealown .sealco{display:flex;align-items:center;gap:8px;font-size:14px;margin:6px 0 8px 4px}
@@ -1633,6 +1641,9 @@ let reviewWarned = false;
 let ccol = null, contracts = [], cLoaded = false, agentCfg = {}, cEditing = null, cConfirmDel = false;
 const INCLUDES = ["電費","水費","瓦斯","網路","有線電視或MOD","大樓管理費","車位"];
 const OTHER_COSTS = ["水費","瓦斯費","網路費","第四台","大樓管理費"];
+const OC_BILL = {"水費":"台水","瓦斯費":"瓦斯公司","網路費":"網路業者","第四台":"第四台業者","大樓管理費":"管委會"};
+// 乙方負擔費用的計價方式：依帳單實支，或每月固定金額
+const ocTxt = (c, x) => { const m = (c.otherCostCfg||{})[x] || {}; return m.mode==="fixed" && m.amount ? `（每月 ${num(m.amount)} 元）` : m.mode==="bill" ? `（依${OC_BILL[x]||""}帳單實支）` : ""; };
 const FAC_GROUPS = {
   "傢俱":[["床頭板",["單人","雙人","加大雙人"]],["床頭櫃",[]],["獨立筒床墊",["單人","雙人","加大雙人"]],["床架",["單人","雙人","加大雙人"]],["衣櫃",["3呎","4呎","5呎"]],["化妝台",[]],["全身鏡",[]],["書桌",[]],["書櫃",[]],["椅子",[]],["沙發",["單人","雙人","三人"]],["茶几",[]],["餐桌",[]],["電視櫃",[]],["置物櫃",[]],["鞋櫃",[]],["流理臺",[]],["窗簾",[]],["曬衣架",[]]],
   "家電":[["液晶電視",["32吋","43吋","50吋","55吋","含底座","含遙控器"]],["電視壁掛架",[]],["數位機上盒",["含遙控器"]],["冷氣機",["分離式","窗型","含遙控器"]],["冰箱",["單門","雙門"]],["洗衣機",["直立式","滾筒式"]],["烘衣機",[]],["電熱水器",[]],["瓦斯熱水器",[]],["電熱水壺",[]],["微波爐",[]],["電磁爐",[]],["抽油煙機",[]],["吹風機",[]],["除濕機",[]],["電風扇",[]],["網路分享器",[]],["對講機",[]]],
@@ -1780,7 +1791,7 @@ function docHTML(c, ctx){
   <li>每月租金 ${fv(num(c.rent))} 元整，租金包含${INCLUDES.map(x=>Bx(inc.includes(x))+x).join("")}${Bx(!!c.includesOther)}其他${fv(c.includesOther)}。每期應繳納 ${fv(c.payMonths)} 個月租金，並於每月 ${fv(c.payDay)} 號前匯入指定帳號繳付。不得藉由任何理由推延或拒絕，出租人於租賃期間亦不得任意要求調漲租金。</li>
   <li>押金由租賃雙方約定為兩個月租金，金額為 ${fv(num(c.deposit))} 元整。承租人應於簽訂本契約之同時給付。租約期滿返還房屋時，經甲方確認乙方戶籍已遷出，且無應賠償違約金、無欠繳租金或其他相關費用、或無其他因乙方違約應沒收擔保金（押金）之情形後，無息退還（於退租點交日隔天起算工作天 10 天完成退款，如遇國定假日順延）。</li>
   <li>電費${Bx(c.elecMode!=="self")}依該獨立分錶計費：${Bx(c.elecMode==="meter"||(!c.elecMode&&c.elecRate))}每度收 ${fv(c.elecMode==="meter"||(!c.elecMode&&c.elecRate)?c.elecRate:"")} 元　${Bx(c.elecMode==="avg")}依台電當期電費帳單之平均每度電價計算，起租電錶度數：${c.elecMode!=="self" && c.meterMode==="split" ? `110V 電錶 ${fv(c.elec110)} 度、220V 電錶 ${fv(c.elec220)} 度（兩只電錶之用電度數合併計算電費）` : `${fv(c.elecMode!=="self"?c.elecStart:"")} 度`}，每季結算乙次，每年 3 月 1 日、6 月 1 日、9 月 1 日、12 月 1 日為結算日。結算日前五日為抄錶日。${Bx(c.elecMode==="self")}獨立門牌依帳單自行繳納。</li>
-  <li>乙方使用房屋之其他相關負擔費用如下：${OTHER_COSTS.map(x=>Bx(oc.includes(x))+x).join("、")}</li>
+  <li>乙方使用房屋之其他相關負擔費用如下：${OTHER_COSTS.map(x=>Bx(oc.includes(x))+x+(oc.includes(x)?ocTxt(c,x):"")).join("、")}</li>
   <li>出入設備：甲方交付乙方：${keys.length ? keys.map(k=>{ const ex = []; if (k.nos) ex.push(`編號：${fv(k.nos)}`); if (+k.dep) ex.push(`每顆押金 ${fv(num(k.dep))} 元，共 ${fv(num((+k.dep)*(+k.qty||0)))} 元`); return `${esc(k.name)} ${fv(k.qty)} ${esc(k.unit)}${ex.length?`（${ex.join("；")}）`:""}`; }).join("、") : "無"}。${keyDepTotal(c) ? `磁扣押金合計 ${fv(num(keyDepTotal(c)))} 元，於簽約時與押金一併給付，於退租點交如數返還磁扣時無息退還；磁扣遺失或損壞者，該顆磁扣押金不予退還，乙方如需補發，應另行繳納新磁扣之押金。` : ""}</li>
   <li>乙方需於租期屆滿一個月前告知甲方是否續約並於約期內完成續約手續，未於一個月前告知或未完成續約手續則視同乙方不續約。</li>
   </ol>
@@ -2054,7 +2065,11 @@ $("c_fac").addEventListener("click", e => {
   }
   const b = e.target.closest("button[data-frm]"); if (!b) return; facRows = readFac(); facRows.splice(+b.dataset.frm,1); drawFac(); });
 $("c_includes").innerHTML = INCLUDES.map((x,i)=>`<label><input type="checkbox" id="inc_${i}" value="${x}"> ${x}</label>`).join("");
-$("c_otherCosts").innerHTML = OTHER_COSTS.map((x,i)=>`<label><input type="checkbox" id="oc_${i}" value="${x}"> ${x}</label>`).join("");
+$("c_otherCosts").innerHTML = OTHER_COSTS.map((x,i)=>`<div class="oc-row"><label><input type="checkbox" id="oc_${i}" value="${x}"> ${x}</label>
+  <span class="oc-opt" id="ocw_${i}" hidden><select id="ocm_${i}" aria-label="${x}計價方式"><option value="bill">依${OC_BILL[x]}帳單</option><option value="fixed">每月固定</option></select>
+  <span id="ocf_${i}" hidden><input id="oca_${i}" type="number" min="0" inputmode="numeric" aria-label="${x}每月金額"> 元</span></span></div>`).join("");
+const ocSync = () => OTHER_COSTS.forEach((x,i) => { $("ocw_"+i).hidden = !$("oc_"+i).checked; $("ocf_"+i).hidden = $("ocm_"+i).value !== "fixed"; });
+$("c_otherCosts").addEventListener("change", ocSync);
 
 function fillUnitOptions(sel){
   const byProp = {};
@@ -2085,7 +2100,9 @@ function setContractForm(c){
   ["owner","ownerIdNo","ownerAddress","agentName","agentPhone","signDate","reviewDate","leaseStart","leaseEnd","rent","deposit","payMonths","payDay","includesOther","elecRate","elecStart","elec110","elec220","otherTerms"].forEach(k => $("c_"+k).value = c[k] ?? "");
   document.querySelector(`input[name=c_meter][value="${c.meterMode==="split"?"split":"single"}"]`).checked = true; syncMeter();
   INCLUDES.forEach((x,i)=> $("inc_"+i).checked = (c.includes||[]).includes(x));
-  OTHER_COSTS.forEach((x,i)=> $("oc_"+i).checked = (c.otherCosts||[]).includes(x));
+  OTHER_COSTS.forEach((x,i)=> { const m = (c.otherCostCfg||{})[x] || {};
+    $("oc_"+i).checked = (c.otherCosts||[]).includes(x); $("ocm_"+i).value = m.mode==="fixed" ? "fixed" : "bill"; $("oca_"+i).value = m.amount ?? ""; });
+  ocSync();
   document.querySelector(`input[name=c_elec][value="${c.elecMode==="self"?"self":c.elecMode==="avg"?"avg":"meter"}"]`).checked = true;
   keyRows = c.keys || c.fobs!==undefined || c.mainKeys!==undefined ? keysOf(c) : [keyRow("1 樓門禁","磁扣","1",""), keyRow("房門","鑰匙","1","")];
   drawKeys(); if ($("c_keyCustom")) $("c_keyCustom").remove();
@@ -2107,7 +2124,7 @@ function templateFor(u){
   // 沿用同房號、否則同物件最近一份合約的條件
   const prev = [...contracts].filter(c=>c.unitId===u.id).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)))[0]
     || [...contracts].filter(c=>c.property===u.property).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)))[0] || {};
-  const keep = ["includes","includesOther","payMonths","payDay","elecMode","elecRate","meterMode","otherCosts","keys","facilities","lessorTerminate","tenantTerminate","usage","restore","restoreOther","cleaning","noticeMonths","notify","notary","notaryExec","notaryFee","notaryFeeBy","notaryAgentFee","notaryAgentFeeBy"];
+  const keep = ["includes","includesOther","payMonths","payDay","elecMode","elecRate","meterMode","otherCosts","otherCostCfg","keys","facilities","lessorTerminate","tenantTerminate","usage","restore","restoreOther","cleaning","noticeMonths","notify","notary","notaryExec","notaryFee","notaryFeeBy","notaryAgentFee","notaryAgentFeeBy"];
   const t = {}; keep.forEach(k => { if (prev[k]!==undefined) t[k] = prev[k]; });
   if (prev.unitId!==u.id && t.facilities) t.facilities = t.facilities.map(f=>({...f}));
   return t;
@@ -2171,6 +2188,7 @@ function collectContract(loose){
     includes: INCLUDES.filter((x,i)=>$("inc_"+i).checked), includesOther: $("c_includesOther").value.trim(),
     elecMode: document.querySelector("input[name=c_elec]:checked").value, elecRate: $("c_elecRate").value, elecStart: $("c_elecStart").value.trim(), meterMode: document.querySelector("input[name=c_meter]:checked").value, elec110: $("c_elec110").value.trim(), elec220: $("c_elec220").value.trim(),
     otherCosts: OTHER_COSTS.filter((x,i)=>$("oc_"+i).checked),
+    otherCostCfg: Object.fromEntries(OTHER_COSTS.map((x,i)=>[x, {mode: $("ocm_"+i).value, amount: $("oca_"+i).value.trim()}]).filter(([x])=>$("oc_"+OTHER_COSTS.indexOf(x)).checked)),
     keys: readKeys().filter(k=>k.name),
     facilities: readFac(),
     lessorTerminate: $("c_lessorTerminate").checked, tenantTerminate: $("c_tenantTerminate").checked,
@@ -3234,9 +3252,9 @@ function confirmMove(){ // 已經有資料時，要按第二次才會覆蓋
   moveArmed = true; document.getElementById("mvStatus").textContent = "這裡已經有資料了。同一筆資料會被搬家檔的內容覆蓋，確定要搬請再選一次檔案。"; return false;
 }
 </script>
-<script src="js/roles.js?v=20261122a"></script>
+<script src="js/roles.js?v=20261122b"></script>
 <script type="module">
-import "./js/fb.js?v=20261122a";
+import "./js/fb.js?v=20261122b";
 document.getElementById("authLoading").hidden = true;
 </script>
 </body>
